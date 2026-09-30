@@ -4,6 +4,8 @@ Lab work for the **Software Project Documentation** course (National University 
 Science). The guiding project is the *AI-Powered Code Reviewer & Practice Platform*, a diploma project where students
 solve programming, math, computer-architecture, and language problems and receive structured AI feedback.
 
+**Live API docs:** [Redoc reference](https://23b1num1822.github.io/barimt-bichig/) · [Swagger UI sandbox](https://23b1num1822.github.io/barimt-bichig/swagger/)
+
 ## Labs
 
 | Week | Topic | Start here |
