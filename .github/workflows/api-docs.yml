@@ -1,0 +1,83 @@
+name: API docs
+
+on:
+  push:
+    branches: [main]
+  pull_request:
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+concurrency:
+  group: pages-${{ github.ref }}
+  cancel-in-progress: false
+
+env:
+  REDOCLY_CLI: "@redocly/cli@2.56.0"
+  PRISM_CLI: "@stoplight/prism-cli@5.16.0"
+
+jobs:
+  verify:
+    name: Lint spec & run code samples
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v7
+      - uses: actions/setup-node@v7
+        with:
+          node-version: 24
+      - uses: actions/setup-python@v7
+        with:
+          python-version: "3.13"
+
+      - name: Lint OpenAPI spec (redocly.yaml rules)
+        run: npx --yes "$REDOCLY_CLI" lint docs/openapi/openapi.yaml --format github-actions
+
+      - name: Start Prism mock server
+        run: |
+          npx --yes "$PRISM_CLI" mock -h 127.0.0.1 -p 4010 docs/openapi/openapi.yaml > prism.log 2>&1 &
+          curl --silent --fail --retry 60 --retry-connrefused --retry-delay 2 --output /dev/null \
+            -H "Authorization: Bearer your_student_jwt_from_login" http://127.0.0.1:4010/api/v1/categories
+
+      - name: Run code samples and compare with the documented responses
+        run: |
+          pip install requests==2.32.5
+          python scripts/verify_code_samples.py
+
+      - name: Show Prism log
+        if: failure()
+        run: cat prism.log
+
+  build:
+    name: Build Redoc & Swagger UI
+    needs: verify
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v7
+      - uses: actions/setup-node@v7
+        with:
+          node-version: 24
+
+      - name: Build Redoc (site root) and publish the raw spec next to Swagger UI
+        run: |
+          npx --yes "$REDOCLY_CLI" build-docs docs/openapi/openapi.yaml -o public/index.html
+          cp docs/openapi/openapi.yaml public/openapi.yaml
+
+      - uses: actions/upload-pages-artifact@v5
+        with:
+          path: public
+
+  deploy:
+    name: Deploy to GitHub Pages
+    if: github.event_name != 'pull_request' && github.ref == 'refs/heads/main'
+    needs: build
+    runs-on: ubuntu-latest
+    permissions:
+      pages: write
+      id-token: write
+    environment:
+      name: github-pages
+      url: ${{ steps.deployment.outputs.page_url }}
+    steps:
+      - id: deployment
+        uses: actions/deploy-pages@v5

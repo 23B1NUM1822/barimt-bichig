@@ -1,0 +1,17 @@
+# Redocly CLI reads this file automatically when `redocly lint` runs from the repository root.
+extends:
+  - recommended
+
+rules:
+  # The diploma project has not chosen a licence yet. Add info.license and remove this line once it does.
+  info-license: off
+
+  # Stricter than `recommended`: every example must match its schema, and every operation must be
+  # documented with an ID, a description, and at least one 4xx response.
+  no-invalid-media-type-examples: error
+  no-invalid-schema-examples: error
+  no-invalid-parameter-examples: error
+  operation-operationId: error
+  operation-description: error
+  operation-4xx-response: error
+  tag-description: error

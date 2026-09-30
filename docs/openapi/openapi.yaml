@@ -1,0 +1,938 @@
+openapi: 3.0.3
+info:
+  title: AI-Powered Code Reviewer & Practice Platform API
+  version: 1.0.0
+  description: |
+    REST API for the **AI-Powered Code Reviewer & Practice Platform**, a diploma project at the
+    National University of Mongolia. Students solve problems in four learning modules and get a
+    structured AI review of every answer: a score, a verdict, concrete issues, and a next step.
+
+    ## Typical flow
+
+    1. `GET /api/v1/categories`: pick one of the four learning modules.
+    2. `GET /api/v1/problems?category=math&difficulty=MEDIUM`: list problems in that module.
+    3. `GET /api/v1/problems/{id}`: read the full statement and the starter code.
+    4. `POST /api/v1/evaluate`: send an answer and receive the AI review.
+    5. `POST /api/v1/submissions`: store the reviewed answer and its score.
+
+    ## Authentication
+
+    Every endpoint requires a JWT access token: `Authorization: Bearer <token>`.
+
+    ## Errors
+
+    Every 4xx and 5xx response uses the `ErrorResponse` body. The `error` message is written in
+    Mongolian because it is shown to students as-is in the web UI.
+
+    ## Private grading data
+
+    Each problem's reference answer and AI grading notes stay on the server. No endpoint returns them.
+  contact:
+    name: T. Sodnomdamba (23B1NUM1822)
+    url: https://github.com/23B1NUM1822/barimt-bichig
+servers:
+  - url: https://api.codepractice.mn/v1
+    description: Production
+  - url: http://127.0.0.1:4010
+    description: >-
+      Local Prism mock that replays the examples in this file. Start it with
+      `npx @stoplight/prism-cli mock docs/openapi/openapi.yaml`, then use it for Swagger UI "Try it out".
+security:
+  - BearerAuth: []
+tags:
+  - name: Evaluation
+    description: AI review of a student's answer. The reviewer persona depends on the problem's module.
+  - name: Problems
+    description: Practice problems with Markdown statements, LaTeX formulas, and optional starter code.
+  - name: Submissions
+    description: Stored answers together with their AI score and feedback.
+  - name: Categories
+    description: The four learning modules that group every problem.
+
+paths:
+  /api/v1/evaluate:
+    post:
+      tags: [Evaluation]
+      operationId: evaluateAnswer
+      summary: Evaluate an answer with the AI reviewer
+      description: |
+        Sends one student answer to the AI reviewer and returns a structured evaluation.
+
+        The reviewer persona comes from the problem's **stored** category: a Senior Software Engineer for
+        `programming`, a Mathematics professor for `math`, a Computer Architecture professor for
+        `architecture`, and an English teacher for `languages`. The `category` field in the request is only
+        cross-checked against the problem, so a client cannot pick a more lenient reviewer.
+
+        A review of hard code or a long proof can take up to **60 seconds**. Set your client timeout accordingly.
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: '#/components/schemas/EvaluationRequest'
+            examples:
+              typescriptRefactor:
+                summary: TypeScript refactor (programming module)
+                value: &typescriptRefactorRequest
+                  problemId: polymorphic-refactor
+                  category: programming
+                  language: typescript
+                  userAnswer: &typescriptRefactorAnswer |
+                    interface PaymentMethod {
+                      fee(amount: number): number;
+                      validate(amount: number): boolean;
+                      describe(): string;
+                    }
+
+                    class CardPayment implements PaymentMethod {
+                      fee(amount: number): number { return amount * 0.025; }
+                      validate(amount: number): boolean { return amount > 0; }
+                      describe(): string { return "Card"; }
+                    }
+
+                    class QPayPayment implements PaymentMethod {
+                      fee(amount: number): number { return amount * 0.005; }
+                      validate(amount: number): boolean { return amount > 0; }
+                      describe(): string { return "QPay"; }
+                    }
+
+                    class BankTransfer implements PaymentMethod {
+                      fee(): number { return 500; }
+                      validate(amount: number): boolean { return amount >= 10_000; }
+                      describe(): string { return "Bank"; }
+                    }
+
+                    class CashPayment implements PaymentMethod {
+                      fee(): number { return 0; }
+                      validate(amount: number): boolean { return amount <= 500_000; }
+                      describe(): string { return "Cash"; }
+                    }
+
+                    type PaymentType = "card" | "qpay" | "bank" | "cash";
+
+                    const paymentMethods: Record<PaymentType, PaymentMethod> = {
+                      card: new CardPayment(),
+                      qpay: new QPayPayment(),
+                      bank: new BankTransfer(),
+                      cash: new CashPayment(),
+                    };
+
+                    class PaymentProcessor {
+                      process(type: PaymentType, amount: number): string {
+                        const method = paymentMethods[type];
+                        if (!method.validate(amount)) {
+                          throw new Error(`${type}: дүн буруу байна`);
+                        }
+                        return `${method.describe()}: ${amount}₮ + ${method.fee(amount)}₮ шимтгэл`;
+                      }
+                    }
+
+                    // --- Шалгах код (өөрчлөхгүй) ---
+                    const processor = new PaymentProcessor();
+                    for (const type of ["card", "qpay", "bank", "cash"] as const) {
+                      console.log(processor.process(type, 50_000));
+                    }
+              calculusExtrema:
+                summary: Calculus solution (math module)
+                value:
+                  problemId: log-diff-extrema
+                  category: math
+                  userAnswer: |
+                    1-р алхам: $f'(x) = x \cdot x^{x-1} = x^x$
+                    2-р алхам: $x^x > 0$ тул $f'(x) = 0$ шийдгүй, критик цэг байхгүй.
+                    3-р алхам: $f(0.1) = 0.1^{0.1} \approx 0.794$, $f(2) = 4$.
+                    Хариу: хамгийн бага $f(0.1) \approx 0.794$, хамгийн их $f(2) = 4$.
+      responses:
+        '200':
+          description: The AI review of the answer.
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/EvaluationResponse'
+              examples:
+                typescriptRefactor:
+                  summary: Review of the TypeScript refactor
+                  value: &typescriptRefactorReview
+                    evaluation: &typescriptRefactorEvaluation
+                      score: 82
+                      verdict: partially_correct
+                      summary: >-
+                        Полиморф бүтэц зөв бөгөөд `switch` бүрэн арилсан. Гэхдээ QPay-ийн хамгийн бага 100₮
+                        шимтгэлийн дүрэм алдагдсан тул жижиг дүн дээр буруу шимтгэл гарна.
+                      issues:
+                        - location: QPayPayment.fee() — 14-р мөр
+                          problem: >-
+                            `amount * 0.005` нь хамгийн бага 100₮ шимтгэлийн дүрмийг алдсан. 50,000₮ дээр 250₮ гарч
+                            шалгах код давсан ч 10,000₮ төлбөрт 100₮ биш 50₮ буцаана.
+                          suggestion: >-
+                            Анхны кодын `Math.max(...)` дүрмийг QPayPayment дотор сэргээгээд 10,000₮ дүнгээр гараар
+                            шалгаарай.
+                        - location: paymentMethods бүртгэл — 33–38, 42-р мөр
+                          problem: >-
+                            PaymentProcessor модулийн түвшний глобал бүртгэлээс шууд хамаарч байгаа тул unit test
+                            дээр өөр төлбөрийн аргаар орлуулах боломжгүй.
+                          suggestion: >-
+                            Бүртгэлийг PaymentProcessor-ийн constructor-оор дамжуулж (dependency injection),
+                            `private readonly` талбарт хадгалаарай.
+                      feedback: &typescriptRefactorFeedback |-
+                        **Сайн тал:** `PaymentMethod` интерфейс, 4 тусдаа класс, `switch`-гүй `PaymentProcessor` нь Open/Closed зарчмыг хангаж байна. `process()` нь O(1).
+
+                        **Засах зүйл:** `QPayPayment.fee()` хамгийн бага 100₮ шимтгэлийг алдсан. Бүртгэлийг constructor-оор inject хийвэл тестлэхэд хялбар болно.
+                      correctedText: null
+                      nextStep: >-
+                        `processor.process("qpay", 10_000)` дуудлагын гаралтыг гараар тооцоод, 100₮ шимтгэл гарахаар
+                        QPayPayment-ийг засаарай.
+                calculusExtrema:
+                  summary: Review of the calculus solution
+                  value:
+                    evaluation:
+                      score: 35
+                      verdict: incorrect
+                      summary: >-
+                        Уламжлалыг зэрэгт функцийн дүрмээр авсан тул критик цэг алдагдаж, хамгийн бага утга буруу
+                        гарсан. Төгсгөлийн цэгүүдийн утга зөв тооцоологдсон.
+                      issues:
+                        - location: "1-р алхам: $f'(x) = x \\cdot x^{x-1}$"
+                          problem: >-
+                            $x^x$-ийн илтгэгч нь хувьсагч тул $\frac{d}{dx}x^n = nx^{n-1}$ дүрэм энд хэрэглэгдэхгүй.
+                          suggestion: >-
+                            $y = x^x$ гэж аваад хоёр талаас натурал логарифм авч, $\ln y = x \ln x$-ийг
+                            дифференциалчил.
+                      feedback: |-
+                        3-р алхамын $f(0.1)$ ба $f(2)$ утгууд зөв байна. Харин 1-р алхамын уламжлал буруу учраас $[0.1, 2]$ завсрын дотор байгаа критик цэг алдагдсан.
+                      correctedText: null
+                      nextStep: >-
+                        $\ln y = x \ln x$-ийн баруун талын уламжлалыг үржвэрийн дүрмээр олоод $f'(x) = 0$
+                        тэгшитгэлийг дахин бод.
+        '400':
+          description: The body is not valid JSON, a field is invalid, or `category` does not match the problem.
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ErrorResponse'
+              examples:
+                categoryMismatch:
+                  summary: category does not match the problem
+                  value:
+                    error: Ангилал бодлоготой таарахгүй байна.
+                emptyAnswer:
+                  summary: userAnswer is empty
+                  value:
+                    error: Хариулт хоосон байна.
+        '401':
+          $ref: '#/components/responses/Unauthorized'
+        '404':
+          $ref: '#/components/responses/ProblemNotFound'
+        '422':
+          description: The AI declined to evaluate this answer.
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ErrorResponse'
+              example:
+                error: AI энэ хариултыг үнэлэхээс татгалзлаа.
+        '429':
+          $ref: '#/components/responses/TooManyRequests'
+        '500':
+          description: The evaluation failed on the server, for example because the AI service is not configured.
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ErrorResponse'
+              example:
+                error: AI үнэлгээ хийхэд алдаа гарлаа.
+        '502':
+          description: The AI service returned an error or an incomplete evaluation. Retrying is safe.
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ErrorResponse'
+              example:
+                error: AI бүрэн үнэлгээ буцаасангүй. Дахин оролдоно уу.
+        '503':
+          description: The AI service could not be reached. Retrying later is safe.
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ErrorResponse'
+              example:
+                error: AI үйлчилгээтэй холбогдож чадсангүй.
+
+  /api/v1/problems:
+    get:
+      tags: [Problems]
+      operationId: listProblems
+      summary: List problems
+      description: |
+        Returns problem summaries, optionally filtered by learning module and difficulty.
+        Results are sorted by difficulty (`EASY` first), then by creation time.
+        Summaries leave out the full statement; fetch `GET /api/v1/problems/{id}` for it.
+      parameters:
+        - name: category
+          in: query
+          required: false
+          description: Only return problems from this learning module.
+          schema:
+            $ref: '#/components/schemas/CategorySlug'
+          example: math
+        - name: difficulty
+          in: query
+          required: false
+          description: Only return problems of this difficulty. Values are upper-case.
+          schema:
+            $ref: '#/components/schemas/Difficulty'
+          example: MEDIUM
+      responses:
+        '200':
+          description: The matching problems. `data` is empty when nothing matches.
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ProblemListResponse'
+              examples:
+                mediumCalculus:
+                  summary: category=math&difficulty=MEDIUM
+                  value: &mediumCalculusProblems
+                    data:
+                      - &logDiffExtremaSummary
+                        id: log-diff-extrema
+                        title: Логарифм дифференциалчлал ба экстремум
+                        description: f(x) = xˣ функцийн [0.1, 2] завсар дээрх хамгийн их, хамгийн бага утгыг ол.
+                        difficulty: MEDIUM
+                        answerType: MATH
+                        codeLanguage: null
+                        category:
+                          slug: math
+                          name: Математик ба логик
+                      - id: limit-sin
+                        title: Гайхамшигт хязгаар
+                        description: sin(3x)/x-ийн x → 0 үеийн хязгаарыг ол.
+                        difficulty: MEDIUM
+                        answerType: MATH
+                        codeLanguage: null
+                        category:
+                          slug: math
+                          name: Математик ба логик
+                    total: 2
+        '400':
+          description: A filter value is not one of the allowed values.
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ErrorResponse'
+              example:
+                error: "difficulty нь EASY, MEDIUM, HARD-ийн аль нэг байх ёстой."
+        '401':
+          $ref: '#/components/responses/Unauthorized'
+        '500':
+          $ref: '#/components/responses/InternalServerError'
+
+  /api/v1/problems/{id}:
+    get:
+      tags: [Problems]
+      operationId: getProblem
+      summary: Get a problem
+      description: |
+        Returns one problem with its full Markdown statement (which may contain LaTeX) and, for code
+        problems, the starter code shown in the editor. The reference answer and grading notes are never included.
+      parameters:
+        - name: id
+          in: path
+          required: true
+          description: Problem ID. Seeded problems use readable IDs such as `limit-sin`; new problems get a CUID.
+          schema:
+            type: string
+            minLength: 1
+          example: limit-sin
+      responses:
+        '200':
+          description: The problem.
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/Problem'
+              examples:
+                remarkableLimit:
+                  summary: A calculus limit problem
+                  value: &limitSinProblem
+                    id: limit-sin
+                    title: Гайхамшигт хязгаар
+                    description: sin(3x)/x-ийн x → 0 үеийн хязгаарыг ол.
+                    content: |-
+                      Дараах хязгаарыг бод:
+
+                      $$
+                      \lim_{x \to 0} \frac{\sin 3x}{x}
+                      $$
+
+                      Хариултаа алхам бүрээр нь тайлбарлаж бичээрэй. LaTeX ашиглаж болно, жишээ нь `$\frac{a}{b}$`.
+
+                      > **Санамж:** Эхний гайхамшигт хязгаар
+                      > $\displaystyle \lim_{t \to 0} \frac{\sin t}{t} = 1$
+                    difficulty: MEDIUM
+                    answerType: MATH
+                    codeLanguage: null
+                    starterCode: null
+                    category:
+                      slug: math
+                      name: Математик ба логик
+                    createdAt: '2026-09-25T03:41:12.504Z'
+                    updatedAt: '2026-09-25T03:41:12.504Z'
+        '401':
+          $ref: '#/components/responses/Unauthorized'
+        '404':
+          $ref: '#/components/responses/ProblemNotFound'
+        '500':
+          $ref: '#/components/responses/InternalServerError'
+
+  /api/v1/submissions:
+    post:
+      tags: [Submissions]
+      operationId: createSubmission
+      summary: Save an evaluated submission
+      description: |
+        Stores a student's answer together with the score and feedback returned by `POST /api/v1/evaluate`.
+        The student is taken from the JWT, so the body has no user ID. The new submission is saved with
+        status `EVALUATED`.
+
+        Send an `Idempotency-Key` header to retry safely after a network error: a repeated key returns the
+        submission that was already saved instead of storing the score twice.
+      parameters:
+        - name: Idempotency-Key
+          in: header
+          required: false
+          description: A unique value per submission attempt, for example a UUID. Reuse it only when retrying.
+          schema:
+            type: string
+            maxLength: 64
+          example: 5f0c6a2e-8d4b-4f7e-9a51-3c2d7b8e1f90
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: '#/components/schemas/SubmissionCreateRequest'
+            examples:
+              typescriptRefactor:
+                summary: Save the reviewed TypeScript refactor
+                value: &typescriptRefactorSubmissionRequest
+                  problemId: polymorphic-refactor
+                  userAnswer: *typescriptRefactorAnswer
+                  language: typescript
+                  score: 82
+                  aiFeedback: *typescriptRefactorFeedback
+      responses:
+        '201':
+          description: The submission was saved.
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/Submission'
+              examples:
+                typescriptRefactor:
+                  summary: Saved TypeScript refactor
+                  value: &typescriptRefactorSubmission
+                    id: cmg6b3n8v0004m2k8q9z5h2uc
+                    userId: cmg4p9x7s0000m2k8r6w1t3ya
+                    problemId: polymorphic-refactor
+                    userAnswer: *typescriptRefactorAnswer
+                    language: typescript
+                    status: EVALUATED
+                    aiFeedback: *typescriptRefactorFeedback
+                    score: 82
+                    createdAt: '2026-09-30T08:14:52.318Z'
+        '400':
+          description: A field is missing or out of range.
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ErrorResponse'
+              example:
+                error: score нь 0-ээс 100-ийн хооронд бүхэл тоо байх ёстой.
+        '401':
+          $ref: '#/components/responses/Unauthorized'
+        '404':
+          $ref: '#/components/responses/ProblemNotFound'
+        '500':
+          $ref: '#/components/responses/InternalServerError'
+
+  /api/v1/categories:
+    get:
+      tags: [Categories]
+      operationId: listCategories
+      summary: List the learning modules
+      description: Returns the four learning modules in the order they appear in the sidebar.
+      responses:
+        '200':
+          description: The four learning modules.
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/CategoryListResponse'
+              examples:
+                allModules:
+                  summary: All four learning modules
+                  value: &allLearningModules
+                    data:
+                      - id: cmg1k7q2d0000l8v3a9x4b2mp
+                        slug: programming
+                        name: Програмчлал
+                        description: >-
+                          AI ментортой хамт бодит код бичиж, алдааг нь засаж, сайжруулаарай. Ментор таны ажлыг хянаж,
+                          дизайны шийдлүүдийг тайлбарлана.
+                        topics: [Код бичих, Алдаа засах, ООП, Архитектур]
+                        problemCount: 2
+                      - &mathModule
+                        id: cmg1k7q2e0001l8v3f6t2c8wn
+                        slug: math
+                        name: Математик ба логик
+                        description: >-
+                          Алхам алхмаар тайлбарласан бодолт болон AI-ийн үүсгэсэн дасгалуудаар математик анализ,
+                          алгоритмын шинжилгээний ойлголтоо бататгаарай.
+                        topics: [Математик анализ, Хязгаар, Асимптот шинжилгээ]
+                        problemCount: 3
+                      - id: cmg1k7q2e0002l8v3h1r5d7ks
+                        slug: architecture
+                        name: Компьютерийн архитектур
+                        description: >-
+                          Логик хаалга, санах ойн шатлалаас эхлээд процессор командыг хэрхэн гүйцэтгэх хүртэл компьютер
+                          яг яаж ажилладгийг судлаарай.
+                        topics: [Санах ой, Логик хаалга, Процессор]
+                        problemCount: 2
+                      - id: cmg1k7q2f0003l8v3j4n8e3qz
+                        slug: languages
+                        name: Гадаад хэл
+                        description: >-
+                          Дүрмээ дадлагажуулж, AI хамтрагчтай бодит яриа өрнүүлж, эссэ бичлэгтээ дэлгэрэнгүй зөвлөгөө
+                          аваарай.
+                        topics: [Дүрэм, Ярианы дадлага, Эссэ бичих]
+                        problemCount: 2
+        '401':
+          $ref: '#/components/responses/Unauthorized'
+        '500':
+          $ref: '#/components/responses/InternalServerError'
+
+components:
+  securitySchemes:
+    BearerAuth:
+      type: http
+      scheme: bearer
+      bearerFormat: JWT
+      description: 'JWT access token issued when the student signs in. Send it as `Authorization: Bearer <token>`.'
+
+  responses:
+    Unauthorized:
+      description: The `Authorization` header is missing, or the token is invalid or expired.
+      content:
+        application/json:
+          schema:
+            $ref: '#/components/schemas/ErrorResponse'
+          example:
+            error: Нэвтрэх токен хүчингүй эсвэл хугацаа нь дууссан байна.
+    ProblemNotFound:
+      description: No problem has this ID.
+      content:
+        application/json:
+          schema:
+            $ref: '#/components/schemas/ErrorResponse'
+          example:
+            error: Бодлого олдсонгүй.
+    TooManyRequests:
+      description: Too many requests from this student. Wait a moment before retrying.
+      content:
+        application/json:
+          schema:
+            $ref: '#/components/schemas/ErrorResponse'
+          example:
+            error: Хэт олон хүсэлт ирлээ. Түр хүлээгээд дахин оролдоно уу.
+    InternalServerError:
+      description: Unexpected server error, for example the database is unavailable.
+      content:
+        application/json:
+          schema:
+            $ref: '#/components/schemas/ErrorResponse'
+          example:
+            error: Серверт алдаа гарлаа. Дахин оролдоно уу.
+
+  schemas:
+    CategorySlug:
+      type: string
+      description: URL-safe identifier of a learning module. It also names the web route `/modules/{slug}`.
+      enum: [programming, math, architecture, languages]
+      example: math
+
+    Difficulty:
+      type: string
+      enum: [EASY, MEDIUM, HARD]
+      example: MEDIUM
+
+    AnswerType:
+      type: string
+      description: |
+        What kind of answer the problem expects, which decides the editor the UI shows:
+        `CODE` is source code, `MATH` is a final value or expression, and `TEXT` is free-form writing.
+      enum: [CODE, MATH, TEXT]
+      example: MATH
+
+    SubmissionStatus:
+      type: string
+      description: |
+        `PENDING`: saved and waiting for the AI. `EVALUATED`: `score` and `aiFeedback` are filled in.
+        `FAILED`: the AI evaluation errored and can be retried.
+      enum: [PENDING, EVALUATED, FAILED]
+      example: EVALUATED
+
+    CategoryRef:
+      type: object
+      description: The learning module a problem belongs to.
+      required: [slug, name]
+      properties:
+        slug:
+          $ref: '#/components/schemas/CategorySlug'
+        name:
+          type: string
+          example: Математик ба логик
+      example:
+        slug: math
+        name: Математик ба логик
+
+    Category:
+      type: object
+      description: One of the four learning modules.
+      required: [id, slug, name, description, topics, problemCount]
+      properties:
+        id:
+          type: string
+          description: CUID of the category.
+          example: cmg1k7q2e0001l8v3f6t2c8wn
+        slug:
+          $ref: '#/components/schemas/CategorySlug'
+        name:
+          type: string
+          example: Математик ба логик
+        description:
+          type: string
+          example: >-
+            Алхам алхмаар тайлбарласан бодолт болон AI-ийн үүсгэсэн дасгалуудаар математик анализ, алгоритмын
+            шинжилгээний ойлголтоо бататгаарай.
+        topics:
+          type: array
+          items:
+            type: string
+          example: [Математик анализ, Хязгаар, Асимптот шинжилгээ]
+        problemCount:
+          type: integer
+          minimum: 0
+          example: 3
+      example: *mathModule
+
+    CategoryListResponse:
+      type: object
+      required: [data]
+      properties:
+        data:
+          type: array
+          items:
+            $ref: '#/components/schemas/Category'
+      example: *allLearningModules
+
+    ProblemSummary:
+      type: object
+      description: A problem as shown in lists. Fetch `GET /api/v1/problems/{id}` for the full statement.
+      required: [id, title, description, difficulty, answerType, codeLanguage, category]
+      properties:
+        id:
+          type: string
+          example: log-diff-extrema
+        title:
+          type: string
+          example: Логарифм дифференциалчлал ба экстремум
+        description:
+          type: string
+          description: One-line summary shown in problem lists.
+          example: f(x) = xˣ функцийн [0.1, 2] завсар дээрх хамгийн их, хамгийн бага утгыг ол.
+        difficulty:
+          $ref: '#/components/schemas/Difficulty'
+        answerType:
+          $ref: '#/components/schemas/AnswerType'
+        codeLanguage:
+          type: string
+          nullable: true
+          description: Editor language for `CODE` problems, for example `typescript` or `verilog`. Null otherwise.
+          example: null
+        category:
+          $ref: '#/components/schemas/CategoryRef'
+      example: *logDiffExtremaSummary
+
+    ProblemListResponse:
+      type: object
+      required: [data, total]
+      properties:
+        data:
+          type: array
+          items:
+            $ref: '#/components/schemas/ProblemSummary'
+        total:
+          type: integer
+          minimum: 0
+          description: Number of problems that match the filters.
+          example: 2
+      example: *mediumCalculusProblems
+
+    Problem:
+      type: object
+      description: A practice problem with its full statement. Reference answers and grading notes are never included.
+      required:
+        [id, title, description, content, difficulty, answerType, codeLanguage, starterCode, category, createdAt, updatedAt]
+      properties:
+        id:
+          type: string
+          example: half-adder
+        title:
+          type: string
+          example: Хагас нэмэгч (Half Adder)
+        description:
+          type: string
+          description: One-line summary shown in problem lists.
+          example: Хоёр битийг нэмдэг хэлхээг Verilog дээр тодорхойл.
+        content:
+          type: string
+          format: markdown
+          description: Full task statement in Markdown. May contain code blocks, tables, and LaTeX (`$...$`, `$$...$$`).
+          example: |-
+            **Хагас нэмэгч** нь `a`, `b` хоёр нэг битийн оролтыг нэмж, `sum` болон `carry` гаралтыг өгдөг.
+
+            $$
+            S = A \oplus B \qquad C = A \cdot B
+            $$
+        difficulty:
+          $ref: '#/components/schemas/Difficulty'
+        answerType:
+          $ref: '#/components/schemas/AnswerType'
+        codeLanguage:
+          type: string
+          nullable: true
+          description: Editor language for `CODE` problems. Null for `MATH` and most `TEXT` problems.
+          example: verilog
+        starterCode:
+          type: string
+          nullable: true
+          description: Code loaded into the editor when the student opens the problem. Null when there is none.
+          example: |
+            module half_adder (
+                input  wire a,
+                input  wire b,
+                output wire sum,
+                output wire carry
+            );
+                // Хэлхээгээ энд тодорхойлно уу
+
+            endmodule
+        category:
+          $ref: '#/components/schemas/CategoryRef'
+        createdAt:
+          type: string
+          format: date-time
+          example: '2026-09-25T03:41:12.504Z'
+        updatedAt:
+          type: string
+          format: date-time
+          example: '2026-09-25T03:41:12.504Z'
+      example: *limitSinProblem
+
+    EvaluationRequest:
+      type: object
+      required: [problemId, userAnswer, category]
+      properties:
+        problemId:
+          type: string
+          minLength: 1
+          example: polymorphic-refactor
+        userAnswer:
+          type: string
+          minLength: 1
+          maxLength: 20000
+          description: The answer exactly as the student typed it. Source code, a math derivation, or an essay.
+          example: |
+            interface PaymentMethod {
+              fee(amount: number): number;
+              validate(amount: number): boolean;
+              describe(): string;
+            }
+        category:
+          $ref: '#/components/schemas/CategorySlug'
+        language:
+          type: string
+          maxLength: 40
+          description: Programming language of a code answer. Leave it out for math and text answers.
+          example: typescript
+      example: *typescriptRefactorRequest
+
+    EvaluationIssue:
+      type: object
+      description: One concrete mistake in the answer.
+      required: [location, problem, suggestion]
+      properties:
+        location:
+          type: string
+          description: Where the mistake is. A line, a step, a signal name, or a quoted phrase.
+          example: QPayPayment.fee() — 14-р мөр
+        problem:
+          type: string
+          description: What is wrong and why.
+          example: "`amount * 0.005` нь хамгийн бага 100₮ шимтгэлийн дүрмийг алдсан."
+        suggestion:
+          type: string
+          description: How to fix it, without giving away the full solution.
+          example: Анхны кодын `Math.max(...)` дүрмийг QPayPayment дотор сэргээгээрэй.
+      example:
+        location: QPayPayment.fee() — 14-р мөр
+        problem: "`amount * 0.005` нь хамгийн бага 100₮ шимтгэлийн дүрмийг алдсан."
+        suggestion: Анхны кодын `Math.max(...)` дүрмийг QPayPayment дотор сэргээгээрэй.
+
+    Evaluation:
+      type: object
+      description: The structured review. `verdict` always agrees with `score`.
+      required: [score, verdict, summary, issues, feedback, correctedText, nextStep]
+      properties:
+        score:
+          type: integer
+          minimum: 0
+          maximum: 100
+          description: '90-100: fully correct. 40-89: partially correct. 0-39: incorrect.'
+          example: 100
+        verdict:
+          type: string
+          enum: [correct, partially_correct, incorrect]
+          example: correct
+        summary:
+          type: string
+          description: One or two sentences with the overall judgement.
+          example: Орлуулга болон гайхамшигт хязгаарыг зөв хэрэглэсэн, хариу 3 зөв.
+        issues:
+          type: array
+          description: Concrete mistakes, most important first. Empty when there are none.
+          items:
+            $ref: '#/components/schemas/EvaluationIssue'
+        feedback:
+          type: string
+          format: markdown
+          description: Detailed review in Markdown, written in the reviewer persona's voice.
+          example: Алхам бүр үндэслэлтэй. $t = 3x$ орлуулгын дараа хязгаарын цэг хэвээр $0$ байгааг тэмдэглэсэн нь сайн.
+        correctedText:
+          type: string
+          nullable: true
+          description: Language problems only. The student's text with every mistake corrected. Null otherwise.
+          example: null
+        nextStep:
+          type: string
+          description: One concrete thing to do next. A hint, a question, or an exercise.
+          example: Ижил аргаар $\lim_{x \to 0} \frac{\tan 5x}{x}$ хязгаарыг бодоод үзээрэй.
+      example: *typescriptRefactorEvaluation
+
+    EvaluationResponse:
+      type: object
+      required: [evaluation]
+      properties:
+        evaluation:
+          $ref: '#/components/schemas/Evaluation'
+      example: *typescriptRefactorReview
+
+    SubmissionCreateRequest:
+      type: object
+      required: [problemId, userAnswer, score, aiFeedback]
+      properties:
+        problemId:
+          type: string
+          minLength: 1
+          example: polymorphic-refactor
+        userAnswer:
+          type: string
+          minLength: 1
+          maxLength: 20000
+          description: The same answer that was sent to `POST /api/v1/evaluate`.
+          example: |
+            interface PaymentMethod {
+              fee(amount: number): number;
+              validate(amount: number): boolean;
+              describe(): string;
+            }
+        language:
+          type: string
+          nullable: true
+          maxLength: 40
+          description: Programming language of a code answer. Null or absent for math and text answers.
+          example: typescript
+        score:
+          type: integer
+          minimum: 0
+          maximum: 100
+          description: '`evaluation.score` from the evaluate response.'
+          example: 82
+        aiFeedback:
+          type: string
+          format: markdown
+          description: '`evaluation.feedback` from the evaluate response.'
+          example: "**Засах зүйл:** `QPayPayment.fee()` хамгийн бага 100₮ шимтгэлийг алдсан."
+      example: *typescriptRefactorSubmissionRequest
+
+    Submission:
+      type: object
+      description: A stored answer with its AI evaluation.
+      required: [id, userId, problemId, userAnswer, language, status, aiFeedback, score, createdAt]
+      properties:
+        id:
+          type: string
+          description: CUID of the submission.
+          example: cmg6b3n8v0004m2k8q9z5h2uc
+        userId:
+          type: string
+          description: CUID of the student, taken from the JWT.
+          example: cmg4p9x7s0000m2k8r6w1t3ya
+        problemId:
+          type: string
+          example: polymorphic-refactor
+        userAnswer:
+          type: string
+          example: |
+            interface PaymentMethod {
+              fee(amount: number): number;
+              validate(amount: number): boolean;
+              describe(): string;
+            }
+        language:
+          type: string
+          nullable: true
+          example: typescript
+        status:
+          $ref: '#/components/schemas/SubmissionStatus'
+        aiFeedback:
+          type: string
+          nullable: true
+          format: markdown
+          description: AI review in Markdown. Null until the evaluation finishes.
+          example: "**Засах зүйл:** `QPayPayment.fee()` хамгийн бага 100₮ шимтгэлийг алдсан."
+        score:
+          type: integer
+          nullable: true
+          minimum: 0
+          maximum: 100
+          description: Null until the evaluation finishes.
+          example: 82
+        createdAt:
+          type: string
+          format: date-time
+          example: '2026-09-30T08:14:52.318Z'
+      example: *typescriptRefactorSubmission
+
+    ErrorResponse:
+      type: object
+      description: Body of every 4xx and 5xx response.
+      required: [error]
+      properties:
+        error:
+          type: string
+          description: Human-readable message in Mongolian, shown to the student as-is.
+          example: Бодлого олдсонгүй.
+      example:
+        error: Бодлого олдсонгүй.

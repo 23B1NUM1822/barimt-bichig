@@ -1,0 +1,7 @@
+# Built by CI from docs/openapi/openapi.yaml (see .github/workflows/api-docs.yml)
+public/index.html
+public/openapi.yaml
+
+__pycache__/
+node_modules/
+prism.log
