@@ -37,7 +37,10 @@ database. The two GET endpoints have no request body, so their request examples 
 - [x] OpenAPI 3.0 YAML spec committed and passing `redocly lint` with **0 errors, 0 warnings**
 - [x] Swagger UI sandbox with a working "Try it out", tested against the Prism mock: [`public/swagger/`](../../public/swagger/index.html)
 - [x] Redoc three-panel reference with navigation and search, built by CI into `public/index.html`
-- [ ] Both renderers live on GitHub Pages (deployed by CI once Pages is enabled for the repository)
+- [x] Both renderers live on GitHub Pages, deployed by CI on every push to `main`:
+  [Redoc](https://23b1num1822.github.io/barimt-bichig/) ·
+  [Swagger UI](https://23b1num1822.github.io/barimt-bichig/swagger/) ·
+  [raw spec](https://23b1num1822.github.io/barimt-bichig/openapi.yaml)
 - [x] Code sample audit scorecard with an average of **4.73 / 5.0** (≥ 4.0 required)
 - [x] 100-word decision report comparing Swagger UI and Redoc
 
