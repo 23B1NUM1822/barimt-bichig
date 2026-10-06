@@ -1,6 +1,11 @@
-# Built by CI from docs/openapi/openapi.yaml (see .github/workflows/api-docs.yml)
+# Built by CI (see .github/workflows/api-docs.yml)
 public/index.html
 public/openapi.yaml
+public/api/
+
+# Generated in lab06 by `npm ci` and the check scripts
+lab06/lib/generated/
+lab06/.doc-examples/
 
 __pycache__/
 node_modules/

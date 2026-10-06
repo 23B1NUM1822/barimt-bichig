@@ -1,0 +1,32 @@
+{
+  "name": "learnlab-api-docs",
+  "version": "1.0.0",
+  "private": true,
+  "description": "Snapshot of the diploma project's public server API, documented with TSDoc and rendered by TypeDoc (Lab 06).",
+  "scripts": {
+    "postinstall": "prisma generate",
+    "typecheck": "tsc --noEmit",
+    "check:todos": "tsx check_todos.ts",
+    "check:examples": "tsx check_doc_examples.ts && tsc --noEmit -p tsconfig.examples.json",
+    "test:hallucinations": "tsx --test test_ai_hallucinations.ts",
+    "docs": "typedoc"
+  },
+  "dependencies": {
+    "@anthropic-ai/sdk": "^0.128.0",
+    "@prisma/adapter-pg": "^7.10.0",
+    "@prisma/client": "^7.10.0",
+    "lucide-react": "^1.48.0",
+    "next": "16.3.6",
+    "react": "19.2.8",
+    "react-dom": "19.2.8",
+    "zod": "^4.6.5"
+  },
+  "devDependencies": {
+    "@types/node": "^20",
+    "@types/react": "^19",
+    "prisma": "^7.10.0",
+    "tsx": "^4.23.15",
+    "typedoc": "^0.28.0",
+    "typescript": "^5"
+  }
+}

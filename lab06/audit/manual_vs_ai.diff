@@ -1,0 +1,480 @@
+--- manual_docstring.ts
++++ ai_docstring.ts
+@@ -1,11 +1,3 @@
+-/**
+- * AI grading of one student answer.
+- *
+- * {@link evaluateSubmission} is the only entry point. It builds a prompt from the problem and the
+- * student's answer, asks Claude for a structured review, and returns an {@link Evaluation}.
+- *
+- * @module
+- */
+ import Anthropic from "@anthropic-ai/sdk";
+ import { betaZodOutputFormat } from "@anthropic-ai/sdk/helpers/beta/zod";
+ import { z } from "zod";
+@@ -13,163 +5,180 @@
+ import type { ModuleSlug } from "@/lib/modules";
+ import type { ProblemWithCategory } from "@/lib/problems";
+ 
+-// Internal, not part of the public API: callers never choose the model. Change it here only.
++/**
++ * The Claude model identifier used for all evaluation operations.
++ *
++ * This constant specifies which Claude model version to use when evaluating student submissions.
++ * Using Claude Opus ensures advanced reasoning capabilities for comprehensive evaluation.
++ *
++ * @example
++ * const model = MODEL; // "claude-opus-5"
++ * console.log(`Using model: ${model}`);
++ */
+ const MODEL = "claude-opus-5";
+ 
+ /**
+- * Zod schema of the structured review that every reviewer persona must return.
++ * Zod schema that defines the structure of an evaluation response from the AI tutor.
+  *
+- * The schema is sent to the model as its output format, so the model's reply always has these fields.
+- * Use {@link Evaluation} for the TypeScript type.
++ * This schema enforces the following evaluation structure:
++ * - `score`: A numeric score from 0 to 100 representing overall performance
++ * - `verdict`: One of "correct", "partially_correct", or "incorrect"
++ * - `summary`: A 1-2 sentence overall judgment
++ * - `issues`: An array of specific problems found, each with location, problem description, and suggestion
++ * - `feedback`: Detailed review written in the persona's voice using Markdown
++ * - `correctedText`: For language problems, the corrected text; otherwise null
++ * - `nextStep`: A concrete hint, question, or exercise for the student to work on next
+  *
+  * @example
+- * Validate a stored evaluation of the `binary-search` problem before showing it:
+- * ```ts
+- * import { EvaluationSchema } from "@/lib/ai/evaluate";
+- *
+- * const parsed = EvaluationSchema.safeParse({
+- *   score: 45,
++ * const data = {
++ *   score: 75,
+  *   verdict: "partially_correct",
+- *   summary: "Хариу зөв гарч байгаа ч хайлт O(n) хугацаатай.",
++ *   summary: "Your solution shows good understanding but has a logic error.",
+  *   issues: [
+  *     {
+- *       location: "2-р мөр: nums.index(target)",
+- *       problem: "index() нь массивыг эхнээс нь шугаман хайдаг.",
+- *       suggestion: "lo, hi хоёр заагч ашиглан мужийг алхам бүрт хоёр хуваа.",
+- *     },
++ *       location: "Line 5",
++ *       problem: "Off-by-one error in loop condition",
++ *       suggestion: "Use `i <= n` instead of `i < n`"
++ *     }
+  *   ],
+- *   feedback: "Жишээн дээр зөв ажиллаж байна. Одоо O(log n) болгоё.",
++ *   feedback: "Good effort! Your approach is sound...",
+  *   correctedText: null,
+- *   nextStep: "target массивт байхгүй үед юу буцаахыг шалгаарай.",
+- * });
+- * if (!parsed.success) console.error(parsed.error.issues);
+- * ```
++ *   nextStep: "Try running through your code step-by-step with n=5"
++ * };
++ * const parsed = EvaluationSchema.parse(data); // Validates structure
++ *
++ * @see {@link Evaluation} - The TypeScript type inferred from this schema
+  */
+ export const EvaluationSchema = z.object({
+-  /** Overall score from 0 to 100. */
+   score: z.number().describe("Overall score from 0 to 100."),
+-  /** Overall judgement: `correct`, `partially_correct`, or `incorrect`. */
+   verdict: z.enum(["correct", "partially_correct", "incorrect"]),
+-  /** One or two sentences with the overall judgement. */
+   summary: z.string().describe("One or two sentences with the overall judgement."),
+-  /** Concrete mistakes, most important first. Empty if there are none. */
+   issues: z
+     .array(
+       z.object({
+-        /** Where the mistake is: a line, a step, a signal, or a quoted phrase. */
+         location: z.string().describe("Where the problem is: a line, a step, a signal, or a quoted phrase."),
+-        /** What is wrong and why. */
+         problem: z.string().describe("What is wrong and why."),
+-        /** How to fix it, without giving away the full solution. */
+         suggestion: z.string().describe("How to fix it, without giving away the full solution."),
+       }),
+     )
+     .describe("Concrete mistakes, most important first. Empty if there are none."),
+-  /** Detailed review in Markdown, written in the persona's voice. */
+   feedback: z.string().describe("Detailed review in Markdown, written in the persona's voice."),
+-  /** Language problems only: the student's text with all mistakes corrected. `null` otherwise. */
+   correctedText: z
+     .string()
+     .nullable()
+     .describe("Language problems only: the student's text with all mistakes corrected. Null otherwise."),
+-  /** One concrete thing the student should do next: a hint, a question, or an exercise. */
+   nextStep: z.string().describe("One concrete thing the student should do next: a hint, question, or exercise."),
+ });
+ 
+ /**
+- * One AI review of one student answer, as returned by {@link evaluateSubmission}.
++ * TypeScript type representing a complete evaluation of a student's submission.
+  *
+- * - `score` is an integer from 0 to 100.
+- * - `verdict` is `correct`, `partially_correct`, or `incorrect`. The model is told to keep it in line with
+- *   `score` (correct from 90, incorrect below 40), but the code does not enforce this.
+- * - `issues` lists concrete mistakes, most important first. It is empty when there are none.
+- * - `feedback` is Markdown and may contain LaTeX.
+- * - `correctedText` is filled only for problems in the `languages` module. Otherwise it is `null`.
++ * This type is inferred from the {@link EvaluationSchema} and includes:
++ * - A numeric score (0-100) with clamped value
++ * - A verdict classifying the submission's correctness
++ * - Structured feedback including specific issues and guidance
++ * - Corrected text for language-related problems
++ * - Next steps to guide continued learning
+  *
+  * @example
+- * Show the result for the `binary-search` problem:
+- * ```ts
+- * import type { Evaluation } from "@/lib/ai/evaluate";
++ * const evaluation: Evaluation = {
++ *   score: 80,
++ *   verdict: "correct",
++ *   summary: "Excellent work!",
++ *   issues: [],
++ *   feedback: "Your implementation is correct and efficient.",
++ *   correctedText: null,
++ *   nextStep: "Try the bonus challenge in the next problem."
++ * };
+  *
+- * function headline(evaluation: Evaluation): string {
+- *   return `${evaluation.score}/100 (${evaluation.verdict}): ${evaluation.summary}`;
+- * }
+- * // "45/100 (partially_correct): Хариу зөв гарч байгаа ч хайлт O(n) хугацаатай."
+- * ```
++ * @see {@link EvaluationSchema} - The Zod schema that defines this type
++ * @see {@link evaluateSubmission} - Function that produces Evaluation objects
+  */
+ export type Evaluation = z.infer<typeof EvaluationSchema>;
+ 
+ /**
+- * Thrown by {@link evaluateSubmission} when the model declines to grade the answer
+- * (the API response has `stop_reason: "refusal"`).
++ * Error thrown when the model refuses to evaluate a submission.
+  *
+- * Retrying with the same answer will not help. The `/api/evaluate` route maps this error to HTTP 422.
++ * This error is raised when the Claude model's safety policies prevent it from
++ * evaluating a particular student submission, typically due to inappropriate content.
+  *
+  * @example
+- * Handle a refusal while grading an answer to the `binary-search` problem:
+- * ```ts
+- * import { evaluateSubmission, EvaluationRefusedError } from "@/lib/ai/evaluate";
+- * import type { ProblemWithCategory } from "@/lib/problems";
+- *
+- * async function gradeBinarySearch(problem: ProblemWithCategory, userAnswer: string): Promise<Response> {
+- *   try {
+- *     const evaluation = await evaluateSubmission({ problem, userAnswer, language: "python" });
+- *     return Response.json({ evaluation });
+- *   } catch (e) {
+- *     if (e instanceof EvaluationRefusedError) return Response.json({ error: e.message }, { status: 422 });
+- *     throw e;
++ * try {
++ *   const evaluation = await evaluateSubmission({...});
++ * } catch (error) {
++ *   if (error instanceof EvaluationRefusedError) {
++ *     console.log("The model refused to evaluate this submission");
++ *     // Handle refusal gracefully, e.g., ask student to revise
+  *   }
+  * }
+- * ```
++ *
++ * @see {@link evaluateSubmission} - Function that may throw this error
++ * @see {@link EvaluationIncompleteError} - Related error for incomplete evaluations
+  */
+ export class EvaluationRefusedError extends Error {}
+ 
+ /**
+- * Thrown by {@link evaluateSubmission} when the model stops before producing a full evaluation:
+- * it ran out of output tokens (`stop_reason: "max_tokens"`) or its reply did not match {@link EvaluationSchema}.
++ * Error thrown when the model fails to produce a complete evaluation.
+  *
+- * Retrying is safe. The `/api/evaluate` route maps this error to HTTP 502.
++ * This error is raised when the model response is incomplete, typically because
++ * the response was cut off due to reaching the token limit or other technical issues.
+  *
+  * @example
+- * Handle a cut-off reply while grading an answer to the `binary-search` problem:
+- * ```ts
+- * import { evaluateSubmission, EvaluationIncompleteError } from "@/lib/ai/evaluate";
+- * import type { ProblemWithCategory } from "@/lib/problems";
+- *
+- * async function gradeBinarySearch(problem: ProblemWithCategory, userAnswer: string): Promise<Response> {
+- *   try {
+- *     const evaluation = await evaluateSubmission({ problem, userAnswer, language: "python" });
+- *     return Response.json({ evaluation });
+- *   } catch (e) {
+- *     if (e instanceof EvaluationIncompleteError) return Response.json({ error: e.message }, { status: 502 });
+- *     throw e;
++ * try {
++ *   const evaluation = await evaluateSubmission({...});
++ * } catch (error) {
++ *   if (error instanceof EvaluationIncompleteError) {
++ *     console.log("Evaluation was incomplete, please retry");
++ *     // Consider implementing exponential backoff for retries
+  *   }
+  * }
+- * ```
++ *
++ * @see {@link evaluateSubmission} - Function that may throw this error
++ * @see {@link EvaluationRefusedError} - Related error for refused evaluations
+  */
+ export class EvaluationIncompleteError extends Error {}
+ 
+-// Internal, not part of the public API: the Anthropic client is created lazily and reused, so importing
+-// this module never fails when the API key is missing. Only evaluateSubmission may call it.
++/**
++ * Singleton instance of the Anthropic SDK client.
++ * Lazily initialized on first use and reused for all subsequent API calls.
++ */
+ let client: Anthropic | null = null;
++
++/**
++ * Gets or creates the singleton Anthropic SDK client instance.
++ *
++ * This function implements lazy initialization and singleton pattern to ensure
++ * only one API client instance is created and reused for all evaluation operations.
++ * The client is initialized only on first call, reducing overhead for subsequent calls.
++ *
++ * @returns The singleton Anthropic client instance
++ *
++ * @example
++ * const client = getClient();
++ * // Subsequent calls return the same instance
++ * const sameClient = getClient();
++ * console.assert(client === sameClient); // true
++ *
++ * @see {@link Anthropic} - The SDK client class
++ */
+ function getClient() {
+-  // Reads ANTHROPIC_API_KEY (or another configured credential) from the environment.
+   client ??= new Anthropic();
+   return client;
+ }
+ 
+-// ---------------------------------------------------------------------------
+-// Prompt
+-//
+-// system  = [shared grading rules] + [category persona] + [teacher's notes for this exact problem]
+-// user    = the problem statement, the reference answer, and the student's answer, in XML tags
+-//
+-// The student's answer is the only untrusted input, so it is fenced in its own tag and the
+-// rules tell the model to treat it purely as material to grade.
+-// ---------------------------------------------------------------------------
+-
+-// Internal, not part of the public API: prompt text shared by every persona. Exposing it would let
+-// callers build prompts that skip the injection and answer-secrecy rules below.
++/**
++ * System prompt instructions that define the AI tutor's behavior and evaluation criteria.
++ *
++ * This constant contains the core grading rules and expectations that guide the model's
++ * evaluation of student submissions on the LearnLab AI platform. It establishes the tutor's
++ * role, tone, and evaluation methodology for Mongolian university students.
++ *
++ * @example
++ * const systemPrompt = buildSystemPrompt("programming", problemData);
++ * // Uses GRADING_RULES as base for the complete system prompt
++ *
++ * @see {@link buildSystemPrompt} - Function that uses this constant
++ */
+ const GRADING_RULES = `You are an AI tutor on LearnLab AI, a university learning platform for Mongolian students.
+ You evaluate one student submission for one problem and return a structured evaluation.
+ 
+@@ -186,7 +195,30 @@
+ - Write summary, issues, feedback, and nextStep in Mongolian, unless your persona says otherwise.
+   Keep code, formulas, and technical terms in their original form.`;
+ 
+-// Internal, not part of the public API: prompt assembly is an implementation detail of evaluateSubmission.
++/**
++ * Builds a system prompt for the evaluation model by combining grading rules, persona instructions, and problem-specific guidance.
++ *
++ * This function constructs the complete system prompt that guides the model's evaluation behavior.
++ * It combines generic grading rules with a persona-specific role and instructions, then adds
++ * problem-specific grading notes to ensure contextual evaluation.
++ *
++ * @param category - The module/subject category slug (e.g., "programming", "mathematics")
++ * @param problem - The problem object containing title, content, grading notes, and expected output
++ *
++ * @returns A complete system prompt string that guides the model's evaluation
++ *
++ * @throws Does not throw directly, but relies on {@link personaFor} which may throw if category is invalid
++ *
++ * @example
++ * const systemPrompt = buildSystemPrompt(
++ *   "programming",
++ *   { title: "Sort Array", difficulty: "medium", content: "...", aiSystemPrompt: "...", category: { slug: "programming" } }
++ * );
++ * // Returns a prompt containing grading rules, persona instructions, and problem-specific notes
++ *
++ * @see {@link personaFor} - Retrieves persona instructions for the category
++ * @see {@link evaluateSubmission} - Uses this function to construct API requests
++ */
+ function buildSystemPrompt(category: ModuleSlug, problem: ProblemWithCategory): string {
+   const persona = personaFor(category);
+   return [
+@@ -196,13 +228,47 @@
+   ].join("\n\n");
+ }
+ 
+-// Internal, not part of the public API: it fences untrusted student text, so it must not be bypassed.
++/**
++ * Builds a user message containing the problem statement and student's answer for evaluation.
++ *
++ * This function formats the problem and student answer into a structured XML-like format
++ * that the model can reliably parse. It includes the problem title, difficulty, full statement,
++ * optional reference answer, and the student's submission, with special handling for nested tags.
++ *
++ * @param problem - The problem object containing title, content, difficulty, and optional expected output
++ * @param userAnswer - The student's submitted answer text
++ * @param language - Optional programming language or problem domain specifier (sanitized for XML safety)
++ *
++ * @returns A formatted user message string ready for API submission
++ *
++ * @example
++ * const message = buildUserMessage(
++ *   {
++ *     category: { slug: "programming" },
++ *     title: "Fibonacci",
++ *     difficulty: "medium",
++ *     content: "Write a function...",
++ *     expectedOutput: "function fib...",
++ *     aiSystemPrompt: "Check efficiency"
++ *   },
++ *   "function fib(n) { return n < 2 ? n : fib(n-1) + fib(n-2); }",
++ *   "javascript"
++ * );
++ * // Returns formatted message with problem and answer in structured tags
++ *
++ * @remarks
++ * - Escapes closing tags in the student answer to prevent XML parsing errors
++ * - Sanitizes the language attribute to only include word characters, `+`, `#`, `.`, and `-`
++ * - Uses XML-like tags to structure data for reliable model parsing
++ *
++ * @see {@link buildSystemPrompt} - Pairs with this function to form complete API request
++ * @see {@link evaluateSubmission} - Uses this function to construct evaluation requests
++ */
+ function buildUserMessage(problem: ProblemWithCategory, userAnswer: string, language?: string): string {
+   const reference = problem.expectedOutput
+     ? `<reference_answer>\n${problem.expectedOutput}\n</reference_answer>\n\n`
+     : "";
+   const languageAttr = language ? ` language="${language.replace(/[^\w+#.-]/g, "")}"` : "";
+-  // Stop the answer from closing its own tag and posing as instructions outside it.
+   const fencedAnswer = userAnswer.replaceAll("</student_answer", "<\\/student_answer");
+ 
+   return `<problem>
+@@ -220,51 +286,64 @@
+ Evaluate the student's answer.`;
+ }
+ 
+-// ---------------------------------------------------------------------------
+-
+ /**
+- * Grades one student answer with the AI reviewer and returns a structured evaluation.
++ * Evaluates a student's submission against a problem using the Claude API with structured output.
+  *
+- * The reviewer persona is chosen from the problem's own category (`problem.category.slug`), never from
+- * client input. The problem's `expectedOutput` and `aiSystemPrompt` are sent to the model as private
+- * grading material and are not included in the result. The returned `score` is rounded and clamped to 0-100.
+- *
+- * One call makes one request to the Anthropic API and can take up to about a minute for hard answers.
+- * The function does not save anything to the database.
+- *
+- * @param input - What to grade.
+- * @param input.problem - The problem with its category, as returned by `getProblem` in `lib/problems`.
+- * @param input.userAnswer - The answer exactly as the student typed it: source code, a math derivation, or an essay.
+- *   The route limits it to 20,000 characters. This function does not check the length itself.
+- * @param input.language - Programming language of a code answer, for example `"python"`. Leave it out for
+- *   math and text answers.
+- * @returns The evaluation, with `score` as an integer from 0 to 100.
+- *
+- * @throws {@link EvaluationRefusedError} The model declined to evaluate the answer. Do not retry.
+- * @throws {@link EvaluationIncompleteError} The model ran out of tokens or returned no parsable evaluation. Safe to retry.
+- * @throws `Anthropic.APIError` (from `@anthropic-ai/sdk`) The API call failed. Subclasses include
+- *   `RateLimitError`, `AuthenticationError`, and `APIConnectionError`.
+- * @throws `TypeError` `problem.category.slug` is not one of the four module slugs, so no persona exists for it.
++ * This function sends a student's answer to the Claude API along with problem context and
++ * persona-specific guidance, then returns a structured evaluation including score, verdict,
++ * detailed feedback, and actionable next steps. The evaluation uses adaptive thinking for
++ * complex problems and server-side fallback for reliable parsing.
++ *
++ * @param options - Configuration object for the evaluation
++ * @param options.problem - The problem the student is solving, including content and expected output
++ * @param options.userAnswer - The student's submitted answer text
++ * @param options.language - Optional programming language or problem domain (e.g., "python", "javascript")
++ *
++ * @returns Promise resolving to an {@link Evaluation} object with:
++ *   - `score`: Numeric score (0-100, automatically clamped)
++ *   - `verdict`: One of "correct", "partially_correct", or "incorrect"
++ *   - `summary`: Brief overall judgment
++ *   - `issues`: Array of specific problems with suggestions
++ *   - `feedback`: Detailed Markdown review in persona voice
++ *   - `correctedText`: Corrected text for language problems, null otherwise
++ *   - `nextStep`: Concrete guidance for continued learning
++ *
++ * @throws {EvaluationRefusedError} When the model declines to evaluate the submission due to safety policies
++ * @throws {EvaluationIncompleteError} When the model response is incomplete (e.g., due to token limit)
++ * @throws {Error} When the Anthropic API call fails or network issues occur
+  *
+  * @example
+- * Grade a Python answer to the `binary-search` problem:
+- * ```ts
+- * import { evaluateSubmission } from "@/lib/ai/evaluate";
+- * import { getProblem } from "@/lib/problems";
+- *
+- * const problem = await getProblem("binary-search");
+- * if (!problem) throw new Error("Бодлого олдсонгүй.");
+- *
+  * const evaluation = await evaluateSubmission({
+- *   problem,
+- *   userAnswer: "def search(nums, target):\n    return nums.index(target)",
+- *   language: "python",
++ *   problem: {
++ *     category: { slug: "programming" },
++ *     title: "Palindrome Checker",
++ *     difficulty: "easy",
++ *     content: "Write a function that checks if a string is a palindrome...",
++ *     expectedOutput: "function isPalindrome(str) { ... }",
++ *     aiSystemPrompt: "Evaluate for correctness and efficiency"
++ *   },
++ *   userAnswer: "function isPalindrome(s) { return s === s.split('').reverse().join(''); }",
++ *   language: "javascript"
+  * });
+  *
+- * console.log(evaluation.score, evaluation.verdict);
+- * // For example: 45 "partially_correct"
+- * for (const issue of evaluation.issues) console.log(issue.location, issue.suggestion);
+- * ```
++ * console.log(`Score: ${evaluation.score}`);
++ * console.log(`Verdict: ${evaluation.verdict}`);
++ * console.log(`Feedback: ${evaluation.feedback}`);
++ *
++ * @remarks
++ * - Uses Claude Opus 5 for advanced reasoning about student work
++ * - Employs adaptive thinking to scale reasoning to problem complexity
++ * - Implements server-side fallback for robust structured output parsing
++ * - Automatically clamps scores to valid 0-100 range
++ * - Max tokens set to 16000 for comprehensive evaluation feedback
++ * - Persona and effort level are determined dynamically from problem category
++ *
++ * @see {@link Evaluation} - The return type containing evaluation results
++ * @see {@link EvaluationRefusedError} - Thrown when model refuses evaluation
++ * @see {@link EvaluationIncompleteError} - Thrown when evaluation is incomplete
++ * @see {@link buildSystemPrompt} - Constructs category and problem-aware instructions
++ * @see {@link buildUserMessage} - Formats problem and answer for submission
++ * @see {@link personaFor} - Provides persona-specific instructions and effort settings
+  */
+ export async function evaluateSubmission({
+   problem,
+@@ -286,7 +365,6 @@
+       effort: persona.effort,
+       format: betaZodOutputFormat(EvaluationSchema),
+     },
+-    // If a safety classifier declines, the API retries on a recommended fallback model.
+     betas: ["server-side-fallback-2026-07-01"],
+     fallbacks: "default",
+     system: buildSystemPrompt(category, problem),

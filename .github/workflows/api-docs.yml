@@ -48,9 +48,41 @@ jobs:
         if: failure()
         run: cat prism.log
 
+  code-docs:
+    name: Check docstrings & build TypeDoc (zero warnings)
+    runs-on: ubuntu-latest
+    defaults:
+      run:
+        working-directory: lab06
+    steps:
+      - uses: actions/checkout@v7
+      - uses: actions/setup-node@v7
+        with:
+          node-version: 24
+          cache: npm
+          cache-dependency-path: lab06/package-lock.json
+
+      - run: npm ci
+      - name: Type-check the documented source
+        run: npm run typecheck
+      - name: Every TODO/FIXME links to an issue
+        run: npm run check:todos
+      - name: Compile every @example in the docstrings
+        run: npm run check:examples
+      - name: Hallucination test (reflection)
+        run: npm run test:hallucinations
+      # typedoc.json sets treatWarningsAsErrors, the TypeDoc equivalent of `sphinx-build -W`.
+      - name: Build the API reference with TypeDoc
+        run: npm run docs
+
+      - uses: actions/upload-artifact@v7
+        with:
+          name: typedoc
+          path: public/api
+
   build:
     name: Build Redoc & Swagger UI
-    needs: verify
+    needs: [verify, code-docs]
     runs-on: ubuntu-latest
     steps:
       - uses: actions/checkout@v7
@@ -62,6 +94,12 @@ jobs:
         run: |
           npx --yes "$REDOCLY_CLI" build-docs docs/openapi/openapi.yaml -o public/index.html
           cp docs/openapi/openapi.yaml public/openapi.yaml
+
+      - name: Add the TypeDoc reference at /api/
+        uses: actions/download-artifact@v8
+        with:
+          name: typedoc
+          path: public/api
 
       - uses: actions/upload-pages-artifact@v5
         with:

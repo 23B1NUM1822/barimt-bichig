@@ -1,0 +1,118 @@
+// Database schema for the AI-powered learning platform.
+// Fields are camelCase in TypeScript and mapped to snake_case columns/tables in the database.
+
+generator client {
+  provider = "prisma-client"
+  output   = "../lib/generated/prisma"
+}
+
+datasource db {
+  provider = "postgresql"
+}
+
+enum Role {
+  STUDENT
+  TEACHER
+  ADMIN
+}
+
+enum Difficulty {
+  EASY
+  MEDIUM
+  HARD
+}
+
+/// What kind of answer a problem expects. Drives which editor the UI shows
+/// and how the answer is checked before/alongside AI evaluation.
+enum AnswerType {
+  CODE // source code, run against expectedOutput
+  MATH // a final value or expression, e.g. "2x + 1" or "O(n log n)"
+  TEXT // free-form writing: essays, explanations, translations
+}
+
+enum SubmissionStatus {
+  PENDING // saved, waiting for the AI to evaluate
+  EVALUATED // aiFeedback and score are filled in
+  FAILED // AI evaluation errored; can be retried
+}
+
+model User {
+  id        String   @id @default(cuid())
+  name      String
+  email     String   @unique
+  role      Role     @default(STUDENT)
+  createdAt DateTime @default(now()) @map("created_at")
+
+  submissions Submission[]
+
+  @@map("users")
+}
+
+model Category {
+  id   String @id @default(cuid())
+  name String @unique // e.g. "Programming", "Math"
+  slug String @unique // matches the route: /modules/[slug]
+
+  problems Problem[]
+
+  @@map("categories")
+}
+
+model Problem {
+  id          String     @id @default(cuid())
+  title       String
+  description String // short summary shown in problem lists
+  content     String // full task statement in Markdown (code blocks, LaTeX, etc.)
+  difficulty  Difficulty @default(EASY)
+  answerType  AnswerType @default(CODE) @map("answer_type")
+
+  /// Reference answer: program stdout for CODE, final value for MATH,
+  /// optional for TEXT (essays are graded by the rubric in aiSystemPrompt).
+  expectedOutput String? @map("expected_output")
+
+  /// Problem-specific instructions for the AI grader: rubric, common mistakes,
+  /// what to hint at without revealing the solution.
+  aiSystemPrompt String @map("ai_system_prompt")
+
+  /// CODE problems only: template shown in the editor and its language (e.g. "python", "verilog").
+  starterCode  String? @map("starter_code")
+  codeLanguage String? @map("code_language")
+
+  categoryId String   @map("category_id")
+  category   Category @relation(fields: [categoryId], references: [id], onDelete: Restrict)
+
+  createdAt DateTime @default(now()) @map("created_at")
+  updatedAt DateTime @updatedAt @map("updated_at")
+
+  submissions Submission[]
+
+  @@index([categoryId])
+  @@map("problems")
+}
+
+model Submission {
+  id String @id @default(cuid())
+
+  userId String @map("user_id")
+  user   User   @relation(fields: [userId], references: [id], onDelete: Cascade)
+
+  problemId String  @map("problem_id")
+  problem   Problem @relation(fields: [problemId], references: [id], onDelete: Cascade)
+
+  /// The student's answer exactly as typed: source code, a math expression, or an essay.
+  userAnswer String  @map("user_answer")
+  /// Programming language for CODE answers (e.g. "python", "java"); null otherwise.
+  language   String?
+
+  status     SubmissionStatus @default(PENDING)
+  /// AI review in Markdown. Null until evaluation finishes.
+  aiFeedback String?          @map("ai_feedback")
+  /// 0–100. Null until evaluation finishes.
+  score      Int?
+
+  createdAt DateTime @default(now()) @map("created_at")
+
+  @@index([userId, createdAt])
+  @@index([problemId])
+  @@map("submissions")
+}

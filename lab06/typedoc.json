@@ -1,0 +1,39 @@
+{
+  "$schema": "https://typedoc.org/schema.json",
+  "name": "LearnLab AI Server API",
+  "entryPoints": [
+    "lib/ai/evaluate.ts",
+    "lib/ai/personas.ts",
+    "lib/problems.ts",
+    "lib/tutor.ts",
+    "lib/modules.ts",
+    "lib/prisma.ts",
+    "app/api/evaluate/route.ts"
+  ],
+  "out": "../public/api",
+  "readme": "API.md",
+  "excludeExternals": true,
+  "externalPattern": [
+    "**/node_modules/**",
+    "**/lib/generated/**"
+  ],
+  "excludePrivate": true,
+  "excludeInternal": true,
+  "treatWarningsAsErrors": true,
+  "treatValidationWarningsAsErrors": true,
+  "validation": {
+    "notExported": true,
+    "invalidLink": true,
+    "notDocumented": true
+  },
+  "intentionallyNotExported": [
+    "PrismaClient",
+    "Problem",
+    "Category"
+  ],
+  "intentionallyNotDocumented": [
+    "lib/ai/evaluate.EvaluationSchema.__type.verdict.__type.correct",
+    "lib/ai/evaluate.EvaluationSchema.__type.verdict.__type.partially_correct",
+    "lib/ai/evaluate.EvaluationSchema.__type.verdict.__type.incorrect"
+  ]
+}

@@ -1,0 +1,32 @@
+# GitLab CI/CD for Lab 06: checks the docstrings and publishes the TypeDoc API reference with GitLab Pages.
+# The same steps run on GitHub in .github/workflows/api-docs.yml.
+
+stages:
+  - test
+  - deploy
+
+default:
+  image: node:24
+  before_script:
+    - cd lab06
+    - npm ci
+
+docstring-checks:
+  stage: test
+  script:
+    - npm run typecheck
+    - npm run check:todos
+    - npm run check:examples
+    - npm run test:hallucinations
+
+pages:
+  stage: deploy
+  script:
+    # typedoc.json sets treatWarningsAsErrors, the TypeDoc equivalent of `sphinx-build -W`.
+    # GitLab Pages only publishes a directory named `public` at the repository root.
+    - npx typedoc --out ../public
+  artifacts:
+    paths:
+      - public
+  rules:
+    - if: $CI_COMMIT_BRANCH == $CI_DEFAULT_BRANCH
