@@ -4,7 +4,7 @@ from pathlib import Path
 
 import requests
 
-API_BASE_URL = os.environ.get("CODEPRACTICE_API_URL", "https://api.codepractice.mn/v1")
+API_BASE_URL = os.environ.get("CODEPRACTICE_API_URL", "https://api.codepractice.mn")
 auth_token = os.environ.get("CODEPRACTICE_JWT", "your_student_jwt_from_login")
 
 evaluation_request = {

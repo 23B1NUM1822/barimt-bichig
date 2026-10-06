@@ -16,11 +16,13 @@ solve programming, math, computer-architecture, and language problems and receiv
 ## Repository layout
 
 ```text
-docs/openapi/openapi.yaml         OpenAPI 3.0.3 specification (5 endpoints)
+docs/openapi/openapi.yaml         OpenAPI 3.0.3 specification (5 endpoints), version 1.1.0
+docs/openapi/openapi.json         The same spec bundled as JSON
 docs/code-samples/                Python samples + the responses they return
 docs/lab05/                       Audit scorecard, decision report, lab index
 public/swagger/index.html         Swagger UI sandbox page (Redoc is built into public/index.html by CI)
 scripts/verify_code_samples.py    Runs every code sample and checks the documented responses
+scripts/test_contract.py          Contract tests: spec rules, lint gate, every example from the mock, old path
 lab06/                            Documented snapshot of the project's server API, TypeDoc config, audit files
 redocly.yaml                      Lint rules for the spec
 .github/workflows/api-docs.yml    Lint, run samples, check docstrings, build all three sites, deploy to GitHub Pages

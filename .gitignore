@@ -1,7 +1,10 @@
 # Built by CI (see .github/workflows/api-docs.yml)
 public/index.html
 public/openapi.yaml
+public/openapi.json
+public/spec-version.json
 public/api/
+public/v[0-9]*/
 
 # Generated in lab06 by `npm ci` and the check scripts
 lab06/lib/generated/

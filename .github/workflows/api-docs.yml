@@ -44,6 +44,11 @@ jobs:
           pip install requests==2.32.5
           python scripts/verify_code_samples.py
 
+      # Spec rules, the lint gate, every documented example served by the mock, and the
+      # expected failure on the old unversioned path (lecture W05, milestone M5).
+      - name: Contract tests
+        run: python -m unittest discover -s scripts -v
+
       - name: Show Prism log
         if: failure()
         run: cat prism.log
@@ -86,6 +91,10 @@ jobs:
     runs-on: ubuntu-latest
     steps:
       - uses: actions/checkout@v7
+        with:
+          # The api-v* tags are needed to build one pinned site per released version.
+          fetch-depth: 0
+          fetch-tags: true
       - uses: actions/setup-node@v7
         with:
           node-version: 24
@@ -93,7 +102,21 @@ jobs:
       - name: Build Redoc (site root) and publish the raw spec next to Swagger UI
         run: |
           npx --yes "$REDOCLY_CLI" build-docs docs/openapi/openapi.yaml -o public/index.html
-          cp docs/openapi/openapi.yaml public/openapi.yaml
+          cp docs/openapi/openapi.yaml docs/openapi/openapi.json public/
+          version=$(jq -r .info.version docs/openapi/openapi.json)
+          spec_hash=$(sha256sum docs/openapi/openapi.yaml | cut -c1-12)
+          jq -n --arg version "$version" --arg specSha256 "$spec_hash" --arg commit "$GITHUB_SHA" \
+            '{version: $version, specSha256: $specSha256, commit: $commit}' > public/spec-version.json
+
+      - name: Build one pinned copy per released version (tags api-v*)
+        run: |
+          for tag in $(git tag --list 'api-v*'); do
+            version="${tag#api-}"
+            mkdir -p "public/$version/swagger"
+            git show "$tag:docs/openapi/openapi.yaml" > "public/$version/openapi.yaml"
+            npx --yes "$REDOCLY_CLI" build-docs "public/$version/openapi.yaml" -o "public/$version/index.html"
+            cp public/swagger/index.html "public/$version/swagger/index.html"
+          done
 
       - name: Add the TypeDoc reference at /api/
         uses: actions/download-artifact@v8
@@ -119,3 +142,16 @@ jobs:
     steps:
       - id: deployment
         uses: actions/deploy-pages@v5
+
+      # Publish gate: the URL must answer with the version that was just built, never a stale one.
+      - name: The live site serves this commit
+        env:
+          PAGE_URL: ${{ steps.deployment.outputs.page_url }}
+        run: |
+          for attempt in $(seq 1 18); do
+            live=$(curl --silent --fail "${PAGE_URL}spec-version.json?run=$GITHUB_RUN_ID-$attempt" | jq -r .commit || true)
+            if [ "$live" = "$GITHUB_SHA" ]; then echo "Live site is at $GITHUB_SHA"; exit 0; fi
+            sleep 10
+          done
+          echo "::error::The live site serves commit '$live', expected $GITHUB_SHA"
+          exit 1

@@ -1,7 +1,7 @@
 openapi: 3.0.3
 info:
   title: AI-Powered Code Reviewer & Practice Platform API
-  version: 1.0.0
+  version: 1.1.0
   description: |
     REST API for the **AI-Powered Code Reviewer & Practice Platform**, a diploma project at the
     National University of Mongolia. Students solve problems in four learning modules and get a
@@ -21,8 +21,46 @@ info:
 
     ## Errors
 
-    Every 4xx and 5xx response uses the `ErrorResponse` body. The `error` message is written in
-    Mongolian because it is shown to students as-is in the web UI.
+    Every 4xx and 5xx response uses the same `ErrorResponse` body:
+
+    - `code` is a stable, machine-readable value such as `problem_not_found`. Branch on this.
+    - `error` is the message in Mongolian. It is shown to students as-is in the web UI.
+    - `requestId` identifies the request in the server logs. Include it in bug reports.
+    - `fields` lists every invalid field. It is present only when `code` is `validation_failed`.
+
+    | Status | `code` | Meaning | Retry? |
+    |---|---|---|---|
+    | 400 | `invalid_json`, `validation_failed`, `category_mismatch` | The request is wrong. Fix it first. | No |
+    | 401 | `unauthorized` | The token is missing, invalid, or expired. | After signing in again |
+    | 404 | `problem_not_found` | No problem has this ID. | No |
+    | 409 | `idempotency_conflict` | The `Idempotency-Key` was already used for a different submission. | With a new key |
+    | 422 | `evaluation_refused` | The AI declined to grade this answer. | No |
+    | 429 | `rate_limited` | Too many requests. | After `Retry-After` seconds |
+    | 500 | `internal_error` | Unexpected server error. | Yes |
+    | 502 | `ai_incomplete` | The AI returned an incomplete evaluation. | Yes |
+    | 503 | `ai_unavailable` | The AI service could not be reached. | Yes |
+
+    ## Versioning and deprecation
+
+    The major version is a path prefix: `/api/v1/...`. A breaking change (a renamed or removed field, a
+    removed endpoint, a different response shape) gets a new prefix, `/api/v2/...`, and both versions stay
+    online side by side. Additive changes (a new endpoint, a new optional field, a new error code with an
+    example) keep the prefix and raise the minor version in `info.version`.
+
+    Before an endpoint is removed it is marked `deprecated: true`, its responses carry a `Sunset` header
+    with the removal date, and its description names the successor.
+
+    The unversioned path `POST /api/evaluate` from before 1.0.0 is not part of this contract. It answers
+    `404`, and the repository keeps a test that shows it.
+
+    Each operation lists its own history under `x-changelog`: what changed, when, and why.
+
+    ## Changelog
+
+    | Version | Date | Change |
+    |---|---|---|
+    | 1.1.0 | 2026-10-06 | Error bodies gained `code` and `requestId`, and `fields` for validation errors. Every operation documents `429` with `Retry-After`. `POST /api/v1/submissions` documents `409`. The server URL no longer repeats the version (it was `https://api.codepractice.mn/v1`, which produced `/v1/api/v1/...`). |
+    | 1.0.0 | 2026-09-30 | First contract: five operations under `/api/v1`, JWT bearer authentication. |
 
     ## Private grading data
 
@@ -31,8 +69,8 @@ info:
     name: T. Sodnomdamba (23B1NUM1822)
     url: https://github.com/23B1NUM1822/barimt-bichig
 servers:
-  - url: https://api.codepractice.mn/v1
-    description: Production
+  - url: https://api.codepractice.mn
+    description: Production. The version is part of each path (`/api/v1/...`).
   - url: http://127.0.0.1:4010
     description: >-
       Local Prism mock that replays the examples in this file. Start it with
@@ -54,6 +92,15 @@ paths:
     post:
       tags: [Evaluation]
       operationId: evaluateAnswer
+      x-changelog:
+        - version: 1.0.0
+          date: '2026-09-30'
+          change: Replaced the unversioned `POST /api/evaluate`. The path gained the `/api/v1` prefix and a JWT became required.
+          reason: A version in the URL lets a later v2 change the response shape without breaking v1 clients.
+        - version: 1.1.0
+          date: '2026-10-06'
+          change: Error bodies gained `code` and `requestId`. `429` now documents the `Retry-After` header.
+          reason: Clients can branch on a stable code instead of parsing a Mongolian message, and they know how long to wait.
       summary: Evaluate an answer with the AI reviewer
       description: |
         Sends one student answer to the AI reviewer and returns a structured evaluation.
@@ -64,6 +111,11 @@ paths:
         cross-checked against the problem, so a client cannot pick a more lenient reviewer.
 
         A review of hard code or a long proof can take up to **60 seconds**. Set your client timeout accordingly.
+
+        **Changelog**
+
+        - **1.1.0** (2026-10-06): Error bodies gained `code` and `requestId`. `429` now documents the `Retry-After` header. *Why:* Clients can branch on a stable code instead of parsing a Mongolian message, and they know how long to wait.
+        - **1.0.0** (2026-09-30): Replaced the unversioned `POST /api/evaluate`. The path gained the `/api/v1` prefix and a JWT became required. *Why:* A version in the URL lets a later v2 change the response shape without breaking v1 clients.
       requestBody:
         required: true
         content:
@@ -205,7 +257,9 @@ paths:
                         $\ln y = x \ln x$-ийн баруун талын уламжлалыг үржвэрийн дүрмээр олоод $f'(x) = 0$
                         тэгшитгэлийг дахин бод.
         '400':
-          description: The body is not valid JSON, a field is invalid, or `category` does not match the problem.
+          description: >-
+            The body is not valid JSON (`invalid_json`), a field is invalid (`validation_failed`), or `category`
+            does not match the problem (`category_mismatch`).
           content:
             application/json:
               schema:
@@ -214,11 +268,18 @@ paths:
                 categoryMismatch:
                   summary: category does not match the problem
                   value:
+                    code: category_mismatch
                     error: Ангилал бодлоготой таарахгүй байна.
+                    requestId: req_7Q2M4X9KD1BT
                 emptyAnswer:
                   summary: userAnswer is empty
                   value:
+                    code: validation_failed
                     error: Хариулт хоосон байна.
+                    requestId: req_3H8W5N2RC6PA
+                    fields:
+                      - field: userAnswer
+                        message: Хариулт хоосон байна.
         '401':
           $ref: '#/components/responses/Unauthorized'
         '404':
@@ -230,7 +291,9 @@ paths:
               schema:
                 $ref: '#/components/schemas/ErrorResponse'
               example:
+                code: evaluation_refused
                 error: AI энэ хариултыг үнэлэхээс татгалзлаа.
+                requestId: req_9T4B7Y1ZK3MD
         '429':
           $ref: '#/components/responses/TooManyRequests'
         '500':
@@ -240,7 +303,9 @@ paths:
               schema:
                 $ref: '#/components/schemas/ErrorResponse'
               example:
+                code: internal_error
                 error: AI үнэлгээ хийхэд алдаа гарлаа.
+                requestId: req_2C6V8J5QX4NE
         '502':
           description: The AI service returned an error or an incomplete evaluation. Retrying is safe.
           content:
@@ -248,7 +313,9 @@ paths:
               schema:
                 $ref: '#/components/schemas/ErrorResponse'
               example:
+                code: ai_incomplete
                 error: AI бүрэн үнэлгээ буцаасангүй. Дахин оролдоно уу.
+                requestId: req_5K1D9R3WG7HF
         '503':
           description: The AI service could not be reached. Retrying later is safe.
           content:
@@ -256,17 +323,33 @@ paths:
               schema:
                 $ref: '#/components/schemas/ErrorResponse'
               example:
+                code: ai_unavailable
                 error: AI үйлчилгээтэй холбогдож чадсангүй.
+                requestId: req_8M3P6T2YB9SL
 
   /api/v1/problems:
     get:
       tags: [Problems]
       operationId: listProblems
+      x-changelog:
+        - version: 1.0.0
+          date: '2026-09-30'
+          change: Added.
+          reason: The problem list page needs filtering by learning module and difficulty.
+        - version: 1.1.0
+          date: '2026-10-06'
+          change: Error bodies gained `code` and `requestId`. `429` now documents the `Retry-After` header.
+          reason: Clients can branch on a stable code instead of parsing a Mongolian message, and they know how long to wait.
       summary: List problems
       description: |
         Returns problem summaries, optionally filtered by learning module and difficulty.
         Results are sorted by difficulty (`EASY` first), then by creation time.
         Summaries leave out the full statement; fetch `GET /api/v1/problems/{id}` for it.
+
+        **Changelog**
+
+        - **1.1.0** (2026-10-06): Error bodies gained `code` and `requestId`. `429` now documents the `Retry-After` header. *Why:* Clients can branch on a stable code instead of parsing a Mongolian message, and they know how long to wait.
+        - **1.0.0** (2026-09-30): Added. *Why:* The problem list page needs filtering by learning module and difficulty.
       parameters:
         - name: category
           in: query
@@ -321,9 +404,16 @@ paths:
               schema:
                 $ref: '#/components/schemas/ErrorResponse'
               example:
+                code: validation_failed
                 error: "difficulty нь EASY, MEDIUM, HARD-ийн аль нэг байх ёстой."
+                requestId: req_4N7X1C8ZV5QJ
+                fields:
+                  - field: difficulty
+                    message: "difficulty нь EASY, MEDIUM, HARD-ийн аль нэг байх ёстой."
         '401':
           $ref: '#/components/responses/Unauthorized'
+        '429':
+          $ref: '#/components/responses/TooManyRequests'
         '500':
           $ref: '#/components/responses/InternalServerError'
 
@@ -331,10 +421,24 @@ paths:
     get:
       tags: [Problems]
       operationId: getProblem
+      x-changelog:
+        - version: 1.0.0
+          date: '2026-09-30'
+          change: Added.
+          reason: The problem page needs the full statement and starter code, without the private grading data.
+        - version: 1.1.0
+          date: '2026-10-06'
+          change: Error bodies gained `code` and `requestId`. `429` now documents the `Retry-After` header.
+          reason: Clients can branch on a stable code instead of parsing a Mongolian message, and they know how long to wait.
       summary: Get a problem
       description: |
         Returns one problem with its full Markdown statement (which may contain LaTeX) and, for code
         problems, the starter code shown in the editor. The reference answer and grading notes are never included.
+
+        **Changelog**
+
+        - **1.1.0** (2026-10-06): Error bodies gained `code` and `requestId`. `429` now documents the `Retry-After` header. *Why:* Clients can branch on a stable code instead of parsing a Mongolian message, and they know how long to wait.
+        - **1.0.0** (2026-09-30): Added. *Why:* The problem page needs the full statement and starter code, without the private grading data.
       parameters:
         - name: id
           in: path
@@ -382,6 +486,8 @@ paths:
           $ref: '#/components/responses/Unauthorized'
         '404':
           $ref: '#/components/responses/ProblemNotFound'
+        '429':
+          $ref: '#/components/responses/TooManyRequests'
         '500':
           $ref: '#/components/responses/InternalServerError'
 
@@ -389,14 +495,29 @@ paths:
     post:
       tags: [Submissions]
       operationId: createSubmission
+      x-changelog:
+        - version: 1.0.0
+          date: '2026-09-30'
+          change: Added.
+          reason: Evaluations were returned to the browser but never stored, so students lost their progress.
+        - version: 1.1.0
+          date: '2026-10-06'
+          change: Error bodies gained `code` and `requestId`. `429` now documents the `Retry-After` header. Added `409` for an `Idempotency-Key` that was reused with a different body.
+          reason: Clients can branch on a stable code instead of parsing a Mongolian message, and they know how long to wait.
       summary: Save an evaluated submission
       description: |
         Stores a student's answer together with the score and feedback returned by `POST /api/v1/evaluate`.
         The student is taken from the JWT, so the body has no user ID. The new submission is saved with
         status `EVALUATED`.
 
-        Send an `Idempotency-Key` header to retry safely after a network error: a repeated key returns the
-        submission that was already saved instead of storing the score twice.
+        Send an `Idempotency-Key` header to retry safely after a network error. A repeated key with the same
+        body returns the submission that was already saved, with `201`, instead of storing the score twice.
+        A repeated key with a different body is rejected with `409`.
+
+        **Changelog**
+
+        - **1.1.0** (2026-10-06): Error bodies gained `code` and `requestId`. `429` now documents the `Retry-After` header. Added `409` for an `Idempotency-Key` that was reused with a different body. *Why:* Clients can branch on a stable code instead of parsing a Mongolian message, and they know how long to wait.
+        - **1.0.0** (2026-09-30): Added. *Why:* Evaluations were returned to the browser but never stored, so students lost their progress.
       parameters:
         - name: Idempotency-Key
           in: header
@@ -448,11 +569,31 @@ paths:
               schema:
                 $ref: '#/components/schemas/ErrorResponse'
               example:
+                code: validation_failed
                 error: score нь 0-ээс 100-ийн хооронд бүхэл тоо байх ёстой.
+                requestId: req_6R2G9K4HD8TW
+                fields:
+                  - field: score
+                    message: score нь 0-ээс 100-ийн хооронд бүхэл тоо байх ёстой.
         '401':
           $ref: '#/components/responses/Unauthorized'
         '404':
           $ref: '#/components/responses/ProblemNotFound'
+        '409':
+          description: >-
+            The `Idempotency-Key` was already used for a submission with a different body. The saved submission
+            is not changed. `conflictingSubmissionId` names it.
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ErrorResponse'
+              example:
+                code: idempotency_conflict
+                error: Энэ Idempotency-Key өөр хариулттай хамт аль хэдийн ашиглагдсан байна.
+                requestId: req_5V8C2N7JQ1KA
+                conflictingSubmissionId: cmg6b3n8v0004m2k8q9z5h2uc
+        '429':
+          $ref: '#/components/responses/TooManyRequests'
         '500':
           $ref: '#/components/responses/InternalServerError'
 
@@ -460,8 +601,23 @@ paths:
     get:
       tags: [Categories]
       operationId: listCategories
+      x-changelog:
+        - version: 1.0.0
+          date: '2026-09-30'
+          change: Added.
+          reason: The sidebar and the home page list the four learning modules.
+        - version: 1.1.0
+          date: '2026-10-06'
+          change: Error bodies gained `code` and `requestId`. `429` now documents the `Retry-After` header.
+          reason: Clients can branch on a stable code instead of parsing a Mongolian message, and they know how long to wait.
       summary: List the learning modules
-      description: Returns the four learning modules in the order they appear in the sidebar.
+      description: |
+        Returns the four learning modules in the order they appear in the sidebar.
+
+        **Changelog**
+
+        - **1.1.0** (2026-10-06): Error bodies gained `code` and `requestId`. `429` now documents the `Retry-After` header. *Why:* Clients can branch on a stable code instead of parsing a Mongolian message, and they know how long to wait.
+        - **1.0.0** (2026-09-30): Added. *Why:* The sidebar and the home page list the four learning modules.
       responses:
         '200':
           description: The four learning modules.
@@ -509,6 +665,8 @@ paths:
                         problemCount: 2
         '401':
           $ref: '#/components/responses/Unauthorized'
+        '429':
+          $ref: '#/components/responses/TooManyRequests'
         '500':
           $ref: '#/components/responses/InternalServerError'
 
@@ -528,7 +686,9 @@ components:
           schema:
             $ref: '#/components/schemas/ErrorResponse'
           example:
+            code: unauthorized
             error: Нэвтрэх токен хүчингүй эсвэл хугацаа нь дууссан байна.
+            requestId: req_1B5S8L3MF7XC
     ProblemNotFound:
       description: No problem has this ID.
       content:
@@ -536,15 +696,26 @@ components:
           schema:
             $ref: '#/components/schemas/ErrorResponse'
           example:
+            code: problem_not_found
             error: Бодлого олдсонгүй.
+            requestId: req_0W9J2Q6NT4ZR
     TooManyRequests:
-      description: Too many requests from this student. Wait a moment before retrying.
+      description: Too many requests from this student. Wait `Retry-After` seconds before retrying.
+      headers:
+        Retry-After:
+          description: Number of seconds to wait before sending the next request.
+          schema:
+            type: integer
+            minimum: 1
+          example: 30
       content:
         application/json:
           schema:
             $ref: '#/components/schemas/ErrorResponse'
           example:
+            code: rate_limited
             error: Хэт олон хүсэлт ирлээ. Түр хүлээгээд дахин оролдоно уу.
+            requestId: req_7D4Y1H8PK2VG
     InternalServerError:
       description: Unexpected server error, for example the database is unavailable.
       content:
@@ -552,7 +723,9 @@ components:
           schema:
             $ref: '#/components/schemas/ErrorResponse'
           example:
+            code: internal_error
             error: Серверт алдаа гарлаа. Дахин оролдоно уу.
+            requestId: req_3F6Z9B5XC1MQ
 
   schemas:
     CategorySlug:
@@ -925,14 +1098,65 @@ components:
           example: '2026-09-30T08:14:52.318Z'
       example: *typescriptRefactorSubmission
 
+    ErrorCode:
+      type: string
+      description: Stable, machine-readable reason for an error. New values may be added in minor versions.
+      enum:
+        - invalid_json
+        - validation_failed
+        - category_mismatch
+        - unauthorized
+        - problem_not_found
+        - idempotency_conflict
+        - evaluation_refused
+        - rate_limited
+        - internal_error
+        - ai_incomplete
+        - ai_unavailable
+      example: problem_not_found
+
+    FieldError:
+      type: object
+      description: One invalid field of the request.
+      required: [field, message]
+      properties:
+        field:
+          type: string
+          description: Name of the body field or query parameter.
+          example: score
+        message:
+          type: string
+          description: What is wrong with it, in Mongolian.
+          example: score нь 0-ээс 100-ийн хооронд бүхэл тоо байх ёстой.
+      example:
+        field: score
+        message: score нь 0-ээс 100-ийн хооронд бүхэл тоо байх ёстой.
+
     ErrorResponse:
       type: object
       description: Body of every 4xx and 5xx response.
-      required: [error]
+      required: [code, error, requestId]
       properties:
+        code:
+          $ref: '#/components/schemas/ErrorCode'
         error:
           type: string
           description: Human-readable message in Mongolian, shown to the student as-is.
           example: Бодлого олдсонгүй.
+        requestId:
+          type: string
+          description: ID of this request in the server logs. Include it when you report a problem.
+          example: req_0W9J2Q6NT4ZR
+        fields:
+          type: array
+          description: Every invalid field. Present only when `code` is `validation_failed`.
+          items:
+            $ref: '#/components/schemas/FieldError'
+        conflictingSubmissionId:
+          type: string
+          description: ID of the submission that already used the `Idempotency-Key`. Present only when `code` is `idempotency_conflict`.
+          example: cmg6b3n8v0004m2k8q9z5h2uc
       example:
+        code: problem_not_found
         error: Бодлого олдсонгүй.
+        requestId: req_0W9J2Q6NT4ZR

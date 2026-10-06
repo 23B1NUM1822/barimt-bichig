@@ -11,7 +11,7 @@ pip install requests
 export CODEPRACTICE_JWT="your_student_jwt_from_login"   # the access token you get when you sign in
 ```
 
-The samples call production (`https://api.codepractice.mn/v1`) by default. To run them against the local mock server
+The samples call production (`https://api.codepractice.mn`) by default. To run them against the local mock server
 instead, start `npx @stoplight/prism-cli mock docs/openapi/openapi.yaml` and set
 `export CODEPRACTICE_API_URL="http://127.0.0.1:4010"`.
 
@@ -37,7 +37,7 @@ from pathlib import Path
 
 import requests
 
-API_BASE_URL = os.environ.get("CODEPRACTICE_API_URL", "https://api.codepractice.mn/v1")
+API_BASE_URL = os.environ.get("CODEPRACTICE_API_URL", "https://api.codepractice.mn")
 auth_token = os.environ.get("CODEPRACTICE_JWT", "your_student_jwt_from_login")
 
 evaluation_request = {
@@ -103,7 +103,7 @@ import os
 
 import requests
 
-API_BASE_URL = os.environ.get("CODEPRACTICE_API_URL", "https://api.codepractice.mn/v1")
+API_BASE_URL = os.environ.get("CODEPRACTICE_API_URL", "https://api.codepractice.mn")
 auth_token = os.environ.get("CODEPRACTICE_JWT", "your_student_jwt_from_login")
 
 problem_filters = {"category": "math", "difficulty": "MEDIUM"}  # difficulty is upper-case: EASY, MEDIUM, HARD
@@ -154,8 +154,9 @@ print(json.dumps(problems_response.json(), ensure_ascii=False, indent=2))
 ```
 
 Summaries leave out the full statement. Fetch it with `GET /api/v1/problems/log-diff-extrema`. An unknown filter
-value such as `difficulty=medium` (lower-case) returns `400` with
-`{"error": "difficulty нь EASY, MEDIUM, HARD-ийн аль нэг байх ёстой."}`.
+value such as `difficulty=medium` (lower-case) returns `400` with `"code": "validation_failed"`, and `fields` names
+the invalid parameter:
+`{"field": "difficulty", "message": "difficulty нь EASY, MEDIUM, HARD-ийн аль нэг байх ёстой."}`.
 
 ---
 
@@ -172,7 +173,7 @@ from pathlib import Path
 
 import requests
 
-API_BASE_URL = os.environ.get("CODEPRACTICE_API_URL", "https://api.codepractice.mn/v1")
+API_BASE_URL = os.environ.get("CODEPRACTICE_API_URL", "https://api.codepractice.mn")
 auth_token = os.environ.get("CODEPRACTICE_JWT", "your_student_jwt_from_login")
 
 # Copied from the POST /api/v1/evaluate response: evaluation["score"] and evaluation["feedback"].
