@@ -1,0 +1,33 @@
+diff -u a/components/problem/code-workspace.tsx b/components/problem/code-workspace.tsx
+--- a/components/problem/code-workspace.tsx
++++ b/components/problem/code-workspace.tsx
+@@ -48,7 +48,7 @@
+       try {
+         setResult(await askTutor({ kind: "code-review", problemId: problem.id, code, language: language.id }));
+       } catch {
+-        setError("Үнэлгээ авахад алдаа гарлаа. Дахин оролдоно уу.");
++        setError("Үнэлгээ ирсэнгүй. Код тань хэвээр байна, дахин илгээгээрэй.");
+       }
+     });
+   }
+@@ -129,7 +129,7 @@
+               pending={pending}
+               result={result}
+               error={error}
+-              emptyText="Кодоо бичээд “Үнэлгээнд илгээх” товчийг дарвал AI багш таны кодыг шалгаж, зөвлөгөө өгнө."
++              emptyText="Кодоо бичээд “Үнэлгээнд илгээх” товчийг дараарай. AI багш энд зөвлөгөө өгнө."
+               loadingText="AI таны кодыг шалгаж байна…"
+             />
+           </div>
+diff -u a/components/problem/description-panel.tsx b/components/problem/description-panel.tsx
+--- a/components/problem/description-panel.tsx
++++ b/components/problem/description-panel.tsx
+@@ -38,7 +38,7 @@
+             <History className="size-8 text-muted" />
+             <p className="text-sm font-medium">Одоогоор илгээлт алга</p>
+             <p className="max-w-xs text-sm text-muted">
+-              Нэвтрэх систем нэмэгдсэний дараа таны өмнөх хариулт, оноо энд харагдана.
++              Хариултууд хараахан хадгалагддаггүй. Үнэлгээ тань хариултын доор гарна.
+             </p>
+           </div>
+         )}
