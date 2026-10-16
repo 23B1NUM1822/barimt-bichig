@@ -124,6 +124,19 @@ jobs:
           name: typedoc
           path: public/api
 
+      - uses: actions/setup-python@v7
+        with:
+          python-version: "3.13"
+
+      # Lab 07: tutorial <= 10 steps, how-to triggers and Verify sections, no tables in how-tos,
+      # reference cross-links, then a strict build (broken links fail) and a check of the search index.
+      - name: Build the user documentation at /guide/ (MkDocs, strict)
+        run: |
+          pip install -r lab07/requirements.txt
+          python lab07/check_docs.py
+          mkdocs build --strict -f lab07/mkdocs.yml -d ../public/guide
+          python lab07/check_docs.py --site public/guide
+
       - uses: actions/upload-pages-artifact@v5
         with:
           path: public

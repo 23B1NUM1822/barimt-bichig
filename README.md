@@ -4,7 +4,7 @@ Lab work for the **Software Project Documentation** course (National University 
 Science). The guiding project is the *AI-Powered Code Reviewer & Practice Platform*, a diploma project where students
 solve programming, math, computer-architecture, and language problems and receive structured AI feedback.
 
-**Live API docs:** [Redoc reference](https://23b1num1822.github.io/barimt-bichig/) · [Swagger UI sandbox](https://23b1num1822.github.io/barimt-bichig/swagger/) · [TypeDoc code reference](https://23b1num1822.github.io/barimt-bichig/api/)
+**Live API docs:** [Redoc reference](https://23b1num1822.github.io/barimt-bichig/) · [Swagger UI sandbox](https://23b1num1822.github.io/barimt-bichig/swagger/) · [TypeDoc code reference](https://23b1num1822.github.io/barimt-bichig/api/) · [User documentation](https://23b1num1822.github.io/barimt-bichig/guide/)
 
 ## Labs
 
@@ -12,6 +12,7 @@ solve programming, math, computer-architecture, and language problems and receiv
 |---|---|---|
 | 05 | OpenAPI 3.0, Bhatti code samples, Swagger UI vs. Redoc | [`docs/lab05/README.md`](docs/lab05/README.md) |
 | 06 | Code documentation (TSDoc + TypeDoc), manual vs. AI docstring audit | [`docs/lab06/README.md`](docs/lab06/README.md) |
+| 07 | User documentation (Diátaxis, MkDocs), UI microcopy | [`docs/lab07/README.md`](docs/lab07/README.md) |
 
 ## Repository layout
 
@@ -24,6 +25,7 @@ public/swagger/index.html         Swagger UI sandbox page (Redoc is built into p
 scripts/verify_code_samples.py    Runs every code sample and checks the documented responses
 scripts/test_contract.py          Contract tests: spec rules, lint gate, every example from the mock, old path
 lab06/                            Documented snapshot of the project's server API, TypeDoc config, audit files
+lab07/                            MkDocs Material site: tutorial, how-to guides, reference, explanation, Lab 07 report
 redocly.yaml                      Lint rules for the spec
 .github/workflows/api-docs.yml    Lint, run samples, check docstrings, build all three sites, deploy to GitHub Pages
 .gitlab-ci.yml                    The Lab 06 docstring pipeline for GitLab CI/CD and GitLab Pages

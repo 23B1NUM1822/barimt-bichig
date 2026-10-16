@@ -1,0 +1,87 @@
+site_name: LearnLab AI Documentation
+site_description: >-
+  User documentation for LearnLab AI, the AI-powered code reviewer and practice platform.
+  Organised with the Diátaxis framework (Lab 07, Software Project Documentation).
+site_author: T. Sodnomdamba (23B1NUM1822)
+site_url: https://23b1num1822.github.io/barimt-bichig/guide/
+repo_url: https://github.com/23B1NUM1822/barimt-bichig
+repo_name: 23B1NUM1822/barimt-bichig
+edit_uri: edit/main/lab07/docs/
+docs_dir: docs
+
+theme:
+  name: material
+  language: en
+  features:
+    - navigation.tabs
+    - navigation.sections
+    - navigation.indexes
+    - navigation.top
+    - navigation.footer
+    - search.suggest
+    - search.highlight
+    - content.code.copy
+  palette:
+    - scheme: default
+      primary: deep purple
+      accent: indigo
+      toggle:
+        icon: material/weather-night
+        name: Switch to dark mode
+    - scheme: slate
+      primary: deep purple
+      accent: indigo
+      toggle:
+        icon: material/weather-sunny
+        name: Switch to light mode
+
+plugins:
+  - search
+
+markdown_extensions:
+  - admonition
+  - attr_list
+  - md_in_html
+  - tables
+  - pymdownx.details
+  - pymdownx.highlight:
+      anchor_linenums: true
+  - pymdownx.inlinehilite
+  - pymdownx.keys
+  - pymdownx.superfences
+  - toc:
+      permalink: true
+
+# `mkdocs build --strict` turns every one of these warnings into a build failure.
+validation:
+  omitted_files: warn
+  absolute_links: warn
+  unrecognized_links: warn
+  anchors: warn
+
+nav:
+  - Home: index.md
+  - Tutorials:
+      - tutorials/index.md
+      - Get your first AI review: tutorials/first-ai-review.md
+  - How-to guides:
+      - how-to/index.md
+      - Add a practice problem: how-to/add-a-practice-problem.md
+      - Enable real AI grading: how-to/enable-ai-grading.md
+      - How to Connect Corg.ly to a Slack Channel: how-to/connect-corgly-to-slack.md
+  - Reference:
+      - reference/index.md
+      - HTTP API: reference/http-api.md
+      - Server action askTutor: reference/server-action.md
+      - Library functions: reference/library.md
+      - Data model: reference/data-model.md
+      - Configuration and commands: reference/configuration.md
+  - Explanation:
+      - explanation/index.md
+      - How grading works: explanation/how-grading-works.md
+  - Lab 07 report:
+      - reports/index.md
+      - UI microcopy before and after: reports/microcopy.md
+      - Definition of Done: reports/definition-of-done.md
+      - Reflection, stand-up, retrospective: reports/reflection.md
+  - References: references.md
